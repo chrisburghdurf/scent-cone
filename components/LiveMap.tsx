@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import type { LatLngExpression } from "leaflet";
+import type { Map as LeafletMap } from "leaflet";
 import { toPng } from "html-to-image";
 
-import ConeCanvas, { downloadDataUrlPNG_ICS, downloadCanvasPNG } from "@/components/ConeCanvas";
+import ConeCanvas, { downloadDataUrlPNG_ICS } from "@/components/ConeCanvas";
 import { WindData } from "@/lib/cone";
 
 const LeafletMapInner = dynamic(() => import("./LeafletMapInner"), { ssr: false });
@@ -12,9 +13,12 @@ export default function LiveMap() {
   const center: LatLngExpression = useMemo(() => [27.49, -82.45], []);
   const zoom = 14;
 
-  const [latlon, setLatlon] = useState<{ lat: number; lon: number } | null>(null);
-  const [wind, setWind] = useState<WindData | null>(null);
+  // Source is stored as LAT/LON (stable)
+  const [sourceLL, setSourceLL] = useState<{ lat: number; lon: number } | null>(null);
+  // Pixel position is derived from map view + sourceLL
   const [srcPoint, setSrcPoint] = useState<{ x: number; y: number } | null>(null);
+
+  const [wind, setWind] = useState<WindData | null>(null);
 
   // Cone controls
   const [lengthPx, setLengthPx] = useState(500);
@@ -25,6 +29,9 @@ export default function LiveMap() {
   const [manualSpeedMph, setManualSpeedMph] = useState<number>(11);
   const [manualFromDeg, setManualFromDeg] = useState<number>(315);
 
+  // Keep source until cleared
+  const [lockSource, setLockSource] = useState(true);
+
   // ICS notes
   const [icsNotes, setIcsNotes] = useState<string>("");
 
@@ -34,32 +41,59 @@ export default function LiveMap() {
   const [locateToken, setLocateToken] = useState(0);
   const [userLoc, setUserLoc] = useState<{ lat: number; lon: number } | null>(null);
 
-  // Container sizing for overlay canvas
+  // Map + export refs
+  const mapRef = useRef<LeafletMap | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const exportRef = useRef<HTMLDivElement | null>(null);
+
+  // Size for overlay canvas (match container)
   const [size, setSize] = useState<{ w: number; h: number }>({ w: 1200, h: 800 });
 
+  // Responsive: stack on mobile
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const update = () => setIsMobile(window.innerWidth <= 820);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  // Keep overlay sized to container
   useEffect(() => {
     if (!containerRef.current) return;
-
     const el = containerRef.current;
     const update = () => setSize({ w: el.clientWidth, h: el.clientHeight });
-
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
 
+  function recomputeSrcPoint(map: LeafletMap | null, ll: { lat: number; lon: number } | null) {
+    // Force Leaflet to redraw when layout changes (mobile orientation, resize)
+useEffect(() => {
+  if (!mapRef.current) return;
+  setTimeout(() => {
+    mapRef.current?.invalidateSize();
+    recomputeSrcPoint(mapRef.current, sourceLL);
+  }, 150);
+}, [isMobile]);
+
+    if (!map || !ll) {
+      setSrcPoint(null);
+      return;
+    }
+    const pt = map.latLngToContainerPoint([ll.lat, ll.lon]);
+    setSrcPoint({ x: pt.x, y: pt.y });
+  }
+
   async function fetchWind(lat: number, lon: number) {
     setWind(null);
-
     const r = await fetch("/api/wind", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ lat, lon, mode: windMode === "hourly" ? "hourly" : "current" }),
     });
-
     const js = await r.json();
     if (!r.ok) throw new Error(js?.error || "Wind fetch failed");
     setWind(js);
@@ -78,27 +112,49 @@ export default function LiveMap() {
       : wind;
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 16 }}>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: isMobile ? "1fr" : "1fr 360px",
+        gap: 16,
+        alignItems: "start",
+      }}
+    >
       {/* MAP AREA */}
       <div
         ref={containerRef}
         style={{
           position: "relative",
           width: "100%",
-          height: 520,
+          height: isMobile ? "65svh" : 520,
+          minHeight: isMobile ? 420 : 520,
           borderRadius: 12,
           overflow: "hidden",
           border: "1px solid #e5e7eb",
         }}
       >
-        {/* This wrapper is what we capture for export (map + cone) */}
         <div ref={exportRef} style={{ position: "absolute", inset: 0 }}>
           <LeafletMapInner
             center={center}
             zoom={zoom}
-            onMapClick={async (lat, lon, px, py) => {
-              setLatlon({ lat, lon });
-              setSrcPoint({ x: px, y: py });
+            onMapReady={(m) => {
+              mapRef.current = m;
+              // On ready, compute source pixel if it exists
+              recomputeSrcPoint(m, sourceLL);
+            }}
+            onViewChanged={(m) => {
+              // On pan/zoom/resize, re-project source to pixels so it stays pinned
+              recomputeSrcPoint(m, sourceLL);
+            }}
+            onMapClick={async (lat, lon) => {
+              // If locked and a source exists, ignore clicks until user clears/unlocks
+              if (lockSource && sourceLL) return;
+
+              const next = { lat, lon };
+              setSourceLL(next);
+
+              // Immediately compute pixel position using current map
+              recomputeSrcPoint(mapRef.current, next);
 
               if (windMode === "manual") return;
 
@@ -124,8 +180,8 @@ export default function LiveMap() {
               lengthPx={lengthPx}
               halfAngleDeg={halfAngle}
               label={
-                latlon
-                  ? `Source @ ${latlon.lat.toFixed(5)}, ${latlon.lon.toFixed(5)}`
+                sourceLL
+                  ? `Source @ ${sourceLL.lat.toFixed(5)}, ${sourceLL.lon.toFixed(5)}`
                   : "Click map to set source"
               }
             />
@@ -142,24 +198,49 @@ export default function LiveMap() {
           <div style={{ marginTop: 8, color: "#374151", fontSize: 13, lineHeight: 1.4 }}>
             <ul style={{ paddingLeft: 18, margin: 0 }}>
               <li><b>Click the map</b> to set the scent source point.</li>
-              <li><b>Wind source</b>: Current = real-time estimate; Hourly = nearest forecast hour; Manual = your input.</li>
-              <li><b>Wind FROM degrees</b>: 0=N, 90=E, 180=S, 270=W (direction the wind is coming from).</li>
-              <li>Adjust <b>cone length</b> and <b>half-angle</b> for terrain and confidence.</li>
-              <li><b>ICS Export</b> saves map + cone + a footer block for briefings and documentation.</li>
+              <li><b>Lock source</b> keeps the point fixed until you clear/unlock it.</li>
+              <li><b>Wind source</b>: Current / Hourly / Manual.</li>
+              <li><b>Wind FROM degrees</b>: 0=N, 90=E, 180=S, 270=W.</li>
+              <li><b>ICS Export</b> saves map + cone + footer.</li>
             </ul>
           </div>
         </details>
 
+        {/* Source controls */}
+        <label style={{ display: "block", marginTop: 10 }}>Source point</label>
+        <div style={{ display: "grid", gap: 8 }}>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={lockSource}
+              onChange={(e) => setLockSource(e.target.checked)}
+            />
+            Lock source until cleared
+          </label>
+
+          <button
+            onClick={() => {
+              setSourceLL(null);
+              setSrcPoint(null);
+              setWind(null);
+            }}
+            style={{ padding: 10, borderRadius: 10 }}
+            disabled={!sourceLL}
+          >
+            Clear source
+          </button>
+        </div>
+
         {/* Wind source */}
-        <label style={{ display: "block", marginTop: 10 }}>Wind source</label>
+        <label style={{ display: "block", marginTop: 12 }}>Wind source</label>
         <select
           value={windMode}
           onChange={(e) => {
             const v = e.target.value as "current" | "hourly" | "manual";
             setWindMode(v);
 
-            if ((v === "current" || v === "hourly") && latlon) {
-              setTimeout(() => fetchWind(latlon.lat, latlon.lon), 0);
+            if ((v === "current" || v === "hourly") && sourceLL) {
+              setTimeout(() => fetchWind(sourceLL.lat, sourceLL.lon), 0);
             }
           }}
           style={{ width: "100%", padding: 10, borderRadius: 10 }}
@@ -188,27 +269,6 @@ export default function LiveMap() {
           </div>
         )}
 
-        {/* Display */}
-        <div
-          style={{
-            marginTop: 12,
-            fontFamily: "ui-monospace, Menlo, monospace",
-            fontSize: 12,
-            whiteSpace: "pre-wrap",
-            background: "#0b1220",
-            color: "white",
-            padding: 10,
-            borderRadius: 10,
-          }}
-        >
-          {latlon ? `lat: ${latlon.lat}\nlon: ${latlon.lon}\n` : "Click map to set source point\n"}
-          {effectiveWind
-            ? `wind_from_deg: ${effectiveWind.wind_dir_from_deg}\nwind_speed_mps: ${effectiveWind.wind_speed_mps}\n`
-            : "wind: (not fetched yet)\n"}
-          {wind && (wind as any).time_local ? `time_local: ${(wind as any).time_local}\n` : ""}
-          {wind && (wind as any).timezone ? `timezone: ${(wind as any).timezone}\n` : ""}
-        </div>
-
         {/* User location */}
         <label style={{ display: "block", marginTop: 12 }}>My location</label>
         <div style={{ display: "grid", gap: 8 }}>
@@ -218,7 +278,7 @@ export default function LiveMap() {
               checked={showUserLocation}
               onChange={(e) => setShowUserLocation(e.target.checked)}
             />
-            Show my location on map
+            Show my location
           </label>
 
           <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -254,7 +314,7 @@ export default function LiveMap() {
           </div>
         </div>
 
-        {/* Cone settings */}
+        {/* Cone controls */}
         <label style={{ display: "block", marginTop: 12 }}>Cone length</label>
         <input
           type="range"
@@ -286,21 +346,11 @@ export default function LiveMap() {
         <textarea
           value={icsNotes}
           onChange={(e) => setIcsNotes(e.target.value)}
-          placeholder="Example: LKP at trailhead. Expect pooling near tree line and drainage SE of source."
+          placeholder="Example: Expect pooling near tree line SE of source."
           style={{ width: "100%", minHeight: 70, padding: 10, borderRadius: 10 }}
         />
 
-        {/* Export buttons */}
-        <button
-          onClick={() => {
-            const canv = containerRef.current?.querySelector("canvas");
-            if (canv) downloadCanvasPNG(canv as HTMLCanvasElement, "scent_cone_overlay.png");
-          }}
-          style={{ width: "100%", marginTop: 12, padding: 12, borderRadius: 12 }}
-        >
-          Export PNG (overlay only)
-        </button>
-
+        {/* Export */}
         <button
           onClick={async () => {
             if (!exportRef.current) return;
@@ -317,8 +367,8 @@ export default function LiveMap() {
 
             await downloadDataUrlPNG_ICS(dataUrl, "scent_cone_live_ics.png", {
               notes: icsNotes,
-              lat: latlon?.lat,
-              lon: latlon?.lon,
+              lat: sourceLL?.lat,
+              lon: sourceLL?.lon,
               windSource: windMode,
               windFromDeg: effectiveWind?.wind_dir_from_deg,
               windSpeedMps: effectiveWind?.wind_speed_mps,
@@ -329,7 +379,7 @@ export default function LiveMap() {
               coneHalfAngleDeg: halfAngle,
             });
           }}
-          style={{ width: "100%", marginTop: 10, padding: 12, borderRadius: 12 }}
+          style={{ width: "100%", marginTop: 12, padding: 12, borderRadius: 12 }}
         >
           Export PNG (Map + Cone + ICS Footer)
         </button>
@@ -337,6 +387,7 @@ export default function LiveMap() {
     </div>
   );
 }
+
 
 
 

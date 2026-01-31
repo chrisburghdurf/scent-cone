@@ -7,22 +7,50 @@ import {
   CircleMarker,
 } from "react-leaflet";
 import type { LatLngExpression } from "leaflet";
+import type { Map as LeafletMap } from "leaflet";
 import "leaflet/dist/leaflet.css";
+
+function MapReporter({
+  onReady,
+  onViewChanged,
+}: {
+  onReady: (map: LeafletMap) => void;
+  onViewChanged: (map: LeafletMap) => void;
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    onReady(map);
+    // Also push an initial view update so parent can compute pixel positions
+    onViewChanged(map);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useMapEvents({
+  zoomend() {
+    onViewChanged(map);
+  },
+  moveend() {
+    onViewChanged(map);
+  },
+  resize() {
+    onViewChanged(map);
+  },
+});
+
+  return null;
+}
 
 function ClickHandler({
   onClick,
 }: {
-  onClick: (lat: number, lon: number, px: number, py: number) => void;
+  onClick: (lat: number, lon: number) => void;
 }) {
-  const map = useMap();
-
   useMapEvents({
     click(e) {
-      const pt = map.latLngToContainerPoint(e.latlng);
-      onClick(e.latlng.lat, e.latlng.lng, pt.x, pt.y);
+      onClick(e.latlng.lat, e.latlng.lng);
     },
   });
-
   return null;
 }
 
@@ -41,7 +69,6 @@ function UserLocationLayer({
   const watchIdRef = useRef<number | null>(null);
   const [pos, setPos] = useState<{ lat: number; lon: number } | null>(null);
 
-  // Start/stop GPS watch
   useEffect(() => {
     if (!enabled) {
       if (watchIdRef.current != null) {
@@ -65,9 +92,7 @@ function UserLocationLayer({
           map.setView([lat, lon], Math.max(map.getZoom(), 15), { animate: true });
         }
       },
-      () => {
-        // user denied or GPS unavailable; keep silent
-      },
+      () => {},
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
     );
 
@@ -79,7 +104,6 @@ function UserLocationLayer({
     };
   }, [enabled, follow, map, onLocation]);
 
-  // “Locate me now” button trigger
   useEffect(() => {
     if (!enabled) return;
     if (!navigator.geolocation) return;
@@ -101,7 +125,6 @@ function UserLocationLayer({
 
   return (
     <>
-      {/* Blue dot for current location */}
       <CircleMarker center={[pos.lat, pos.lon]} radius={8} pathOptions={{ color: "#2563eb" }} />
       <CircleMarker center={[pos.lat, pos.lon]} radius={18} pathOptions={{ color: "#93c5fd" }} />
     </>
@@ -112,6 +135,8 @@ export default function LeafletMapInner({
   center,
   zoom,
   onMapClick,
+  onMapReady,
+  onViewChanged,
   showUserLocation,
   followUser,
   locateToken,
@@ -119,7 +144,10 @@ export default function LeafletMapInner({
 }: {
   center: LatLngExpression;
   zoom: number;
-  onMapClick: (lat: number, lon: number, px: number, py: number) => void;
+
+  onMapClick: (lat: number, lon: number) => void;
+  onMapReady: (map: LeafletMap) => void;
+  onViewChanged: (map: LeafletMap) => void;
 
   showUserLocation: boolean;
   followUser: boolean;
@@ -134,6 +162,7 @@ export default function LeafletMapInner({
         crossOrigin="anonymous"
       />
 
+      <MapReporter onReady={onMapReady} onViewChanged={onViewChanged} />
       <ClickHandler onClick={onMapClick} />
 
       <UserLocationLayer
