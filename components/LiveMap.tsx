@@ -22,47 +22,69 @@ type Trap = { id: string; lat: number; lon: number; label: string };
 function isoNow() {
   return new Date().toISOString();
 }
-
 function uid(prefix = "id") {
   return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
+}
+
+// Convert ISO -> datetime-local value (local time)
+function isoToLocalInput(iso: string) {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  const mm = pad(d.getMonth() + 1);
+  const dd = pad(d.getDate());
+  const hh = pad(d.getHours());
+  const mi = pad(d.getMinutes());
+  return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+}
+// Convert datetime-local string -> ISO
+function localInputToIso(v: string) {
+  const d = new Date(v);
+  return d.toISOString();
 }
 
 export default function LiveMap() {
   const center: LatLngExpression = useMemo(() => [27.49, -82.45], []);
   const zoom = 14;
 
-  // Multi-LKP state
+  // ===== App Mode =====
+  const [mode, setMode] = useState<"live" | "scenario">("live");
+
+  // ===== LIVE MODE STATE (all-4 features) =====
   const [lkps, setLkps] = useState<LKP[]>([]);
   const [activeLkpId, setActiveLkpId] = useState<string | null>(null);
-
   const activeLkp = useMemo(() => lkps.find((k) => k.id === activeLkpId) ?? null, [lkps, activeLkpId]);
 
-  // Stable source (lat/lon) for the active LKP
-  const sourceLL = activeLkp ? { lat: activeLkp.lat, lon: activeLkp.lon } : null;
+  const sourceLL_live = activeLkp ? { lat: activeLkp.lat, lon: activeLkp.lon } : null;
 
-  // Pixel point derived from map view + sourceLL (for canvas cone)
+  // ===== SCENARIO MODE STATE =====
+  const [scenarioLL, setScenarioLL] = useState<{ lat: number; lon: number } | null>(null);
+  const [scenarioTimeISO, setScenarioTimeISO] = useState<string>(isoNow());  // “as-of” time
+  const [scenarioElapsedMin, setScenarioElapsedMin] = useState<number>(60);  // show travel after LKP
+  const [scenarioLabel, setScenarioLabel] = useState<string>("Scenario");
+
+  // ===== Shared pixel point for cone (derived from selected LL) =====
   const [srcPoint, setSrcPoint] = useState<{ x: number; y: number } | null>(null);
 
-  // Wind
+  // ===== Wind =====
   const [wind, setWind] = useState<WindData | null>(null);
 
-  // Visual cone controls
-  const [lengthPx, setLengthPx] = useState(500);
-  const [halfAngle, setHalfAngle] = useState<"auto" | number>("auto");
-
-  // Wind source controls
-  const [windMode, setWindMode] = useState<"current" | "hourly" | "manual">("current");
+  // Wind modes: live uses current/hourly/manual; scenario uses historical/manual
+  const [windMode, setWindMode] = useState<"current" | "hourly" | "historical" | "manual">("current");
   const [manualSpeedMph, setManualSpeedMph] = useState<number>(11);
   const [manualFromDeg, setManualFromDeg] = useState<number>(315);
 
-  // Source locking
+  // ===== Visual cone controls =====
+  const [lengthPx, setLengthPx] = useState(500);
+  const [halfAngle, setHalfAngle] = useState<"auto" | number>("auto");
+
+  // ===== Source locking (live) =====
   const [lockSource, setLockSource] = useState(true);
 
-  // Envelope toggles + environment
+  // ===== Envelope toggles + environment =====
   const [showEnvelope, setShowEnvelope] = useState(true);
   const [showTimeBands, setShowTimeBands] = useState(true);
-  const [bandSet, setBandSet] = useState<number[]>([15, 30, 60, 120]); // default A
-  const [showAllLkpEnvelopes, setShowAllLkpEnvelopes] = useState(false);
+  const [bandSet] = useState<number[]>([15, 30, 60, 120]);
 
   const [terrain, setTerrain] = useState<TerrainType>("mixed");
   const [stability, setStability] = useState<StabilityType>("neutral");
@@ -73,29 +95,29 @@ export default function LiveMap() {
   const [rh, setRh] = useState<number>(50);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // Terrain traps
+  // ===== Terrain traps =====
   const [traps, setTraps] = useState<Trap[]>([]);
   const [mapMode, setMapMode] = useState<"setSource" | "addTrap">("setSource");
   const [newTrapLabel, setNewTrapLabel] = useState("Terrain trap");
 
-  // ICS notes
+  // ===== ICS notes =====
   const [icsNotes, setIcsNotes] = useState<string>("");
 
-  // User location
+  // ===== User location =====
   const [showUserLocation, setShowUserLocation] = useState(true);
   const [followUser, setFollowUser] = useState(false);
   const [locateToken, setLocateToken] = useState(0);
   const [userLoc, setUserLoc] = useState<{ lat: number; lon: number } | null>(null);
 
-  // Map + export refs
+  // ===== Map refs =====
   const mapRef = useRef<LeafletMap | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const exportRef = useRef<HTMLDivElement | null>(null);
 
-  // Overlay size matches container
+  // overlay size
   const [size, setSize] = useState<{ w: number; h: number }>({ w: 1200, h: 800 });
 
-  // Responsive layout
+  // responsive layout
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     const update = () => setIsMobile(window.innerWidth <= 820);
@@ -114,6 +136,27 @@ export default function LiveMap() {
     return () => ro.disconnect();
   }, []);
 
+  // force Leaflet redraw on layout changes
+  useEffect(() => {
+    if (!mapRef.current) return;
+    setTimeout(() => {
+      mapRef.current?.invalidateSize();
+      recomputeSrcPoint(mapRef.current, selectedLL);
+    }, 150);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMobile]);
+
+  // ===== Time “now” ticks (live mode only) =====
+  const [nowISO, setNowISO] = useState<string>(isoNow());
+  useEffect(() => {
+    if (mode !== "live") return;
+    const id = setInterval(() => setNowISO(isoNow()), 60_000);
+    return () => clearInterval(id);
+  }, [mode]);
+
+  // ===== Selected location depends on mode =====
+  const selectedLL = mode === "live" ? sourceLL_live : scenarioLL;
+
   function recomputeSrcPoint(map: LeafletMap | null, ll: { lat: number; lon: number } | null) {
     if (!map || !ll) {
       setSrcPoint(null);
@@ -123,35 +166,24 @@ export default function LiveMap() {
     setSrcPoint({ x: pt.x, y: pt.y });
   }
 
-  // Force Leaflet redraw on layout changes (mobile Safari)
-  useEffect(() => {
-    if (!mapRef.current) return;
-    setTimeout(() => {
-      mapRef.current?.invalidateSize();
-      recomputeSrcPoint(mapRef.current, sourceLL);
-    }, 150);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMobile]);
-
-  // “now” ticks for time-aware computations
-  const [nowISO, setNowISO] = useState<string>(isoNow());
-  useEffect(() => {
-    const id = setInterval(() => setNowISO(isoNow()), 60_000);
-    return () => clearInterval(id);
-  }, []);
-
-  async function fetchWind(lat: number, lon: number) {
+  // ===== API wind fetch supporting historical =====
+  async function fetchWind(lat: number, lon: number, apiMode: "current" | "hourly" | "historical", timeISO?: string) {
     setWind(null);
+    const body: any = { lat, lon, mode: apiMode };
+    if (apiMode === "historical") body.time_iso = timeISO;
+
     const r = await fetch("/api/wind", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lat, lon, mode: windMode === "hourly" ? "hourly" : "current" }),
+      body: JSON.stringify(body),
     });
+
     const js = await r.json();
     if (!r.ok) throw new Error(js?.error || "Wind fetch failed");
     setWind(js);
   }
 
+  // effective wind
   const effectiveWind: WindData | null =
     windMode === "manual"
       ? ({
@@ -164,16 +196,37 @@ export default function LiveMap() {
         } as any)
       : wind;
 
-  // Compute a single envelope “now” for the active LKP
+  // ===== Scenario “LKPs” are virtual (single point) =====
+  const virtualScenarioLkp = useMemo(() => {
+    if (!scenarioLL) return null;
+    return {
+      id: "scenario",
+      lat: scenarioLL.lat,
+      lon: scenarioLL.lon,
+      timeISO: scenarioTimeISO, // base LKP time in scenario
+      label: scenarioLabel || "Scenario",
+    } as LKP;
+  }, [scenarioLL, scenarioTimeISO, scenarioLabel]);
+
+  // ===== Envelope computation =====
+  const activeForEnvelope = mode === "live" ? activeLkp : virtualScenarioLkp;
+
   const envelopeNow = useMemo(() => {
-    if (!showEnvelope || !activeLkp || !effectiveWind) return null;
+    if (!showEnvelope || !activeForEnvelope || !effectiveWind) return null;
+
     const windSpeedMph = effectiveWind.wind_speed_mps * 2.236936;
 
+    // In scenario mode, “now” is scenarioTime + elapsed minutes
+    const nowForModel =
+      mode === "scenario"
+        ? addMinutesIso(activeForEnvelope.timeISO, scenarioElapsedMin)
+        : nowISO;
+
     return computeScentEnvelope({
-      lkp_lat: activeLkp.lat,
-      lkp_lon: activeLkp.lon,
-      lkp_time_iso: activeLkp.timeISO,
-      now_time_iso: nowISO,
+      lkp_lat: activeForEnvelope.lat,
+      lkp_lon: activeForEnvelope.lon,
+      lkp_time_iso: activeForEnvelope.timeISO,
+      now_time_iso: nowForModel,
       wind_from_deg: effectiveWind.wind_dir_from_deg,
       wind_speed_mph: windSpeedMph,
 
@@ -185,22 +238,36 @@ export default function LiveMap() {
       terrain,
       stability,
     });
-  }, [showEnvelope, activeLkp, effectiveWind, nowISO, tempF, rh, cloud, precip, recentRain, terrain, stability]);
+  }, [
+    showEnvelope,
+    activeForEnvelope,
+    effectiveWind,
+    mode,
+    scenarioElapsedMin,
+    nowISO,
+    tempF,
+    rh,
+    cloud,
+    precip,
+    recentRain,
+    terrain,
+    stability,
+  ]);
 
-  // Compute time bands for the active LKP
   const envelopeBands = useMemo(() => {
-    if (!showEnvelope || !showTimeBands || !activeLkp || !effectiveWind) return null;
+    if (!showEnvelope || !showTimeBands || !activeForEnvelope || !effectiveWind) return null;
     const windSpeedMph = effectiveWind.wind_speed_mps * 2.236936;
 
-    const bands = bandSet
+    // Bands are always from the LKP base time
+    return bandSet
       .slice()
       .sort((a, b) => a - b)
       .map((mins) => {
         const e = computeScentEnvelope({
-          lkp_lat: activeLkp.lat,
-          lkp_lon: activeLkp.lon,
-          lkp_time_iso: activeLkp.timeISO,
-          now_time_iso: addMinutesIso(activeLkp.timeISO, mins),
+          lkp_lat: activeForEnvelope.lat,
+          lkp_lon: activeForEnvelope.lon,
+          lkp_time_iso: activeForEnvelope.timeISO,
+          now_time_iso: addMinutesIso(activeForEnvelope.timeISO, mins),
           wind_from_deg: effectiveWind.wind_dir_from_deg,
           wind_speed_mph: windSpeedMph,
 
@@ -212,6 +279,7 @@ export default function LiveMap() {
           terrain,
           stability,
         });
+
         return {
           minutes: mins,
           polygons: e.polygons,
@@ -219,36 +287,34 @@ export default function LiveMap() {
           confidence_band: e.confidence_band,
         };
       });
+  }, [
+    showEnvelope,
+    showTimeBands,
+    bandSet,
+    activeForEnvelope,
+    effectiveWind,
+    tempF,
+    rh,
+    cloud,
+    precip,
+    recentRain,
+    terrain,
+    stability,
+  ]);
 
-    return bands;
-  }, [showEnvelope, showTimeBands, bandSet, activeLkp, effectiveWind, tempF, rh, cloud, precip, recentRain, terrain, stability]);
+  // elapsed mins display
+  const elapsedMin = useMemo(() => {
+    if (!activeForEnvelope) return null;
+    const t0 = Date.parse(activeForEnvelope.timeISO);
+    const t1 =
+      mode === "scenario"
+        ? Date.parse(addMinutesIso(activeForEnvelope.timeISO, scenarioElapsedMin))
+        : Date.parse(nowISO);
+    if (!Number.isFinite(t0) || !Number.isFinite(t1)) return null;
+    return Math.max(0, Math.round((t1 - t0) / 60000));
+  }, [activeForEnvelope, mode, scenarioElapsedMin, nowISO]);
 
-  // Optional: show all LKPs’ envelopes (uses NOW envelopes; bands would be too busy)
-  const allLkpEnvelopes = useMemo(() => {
-    if (!showEnvelope || !showAllLkpEnvelopes || !effectiveWind) return null;
-    const windSpeedMph = effectiveWind.wind_speed_mps * 2.236936;
-
-    return lkps.map((k) => {
-      const e = computeScentEnvelope({
-        lkp_lat: k.lat,
-        lkp_lon: k.lon,
-        lkp_time_iso: k.timeISO,
-        now_time_iso: nowISO,
-        wind_from_deg: effectiveWind.wind_dir_from_deg,
-        wind_speed_mph: windSpeedMph,
-        temperature_f: tempF,
-        rel_humidity_pct: rh,
-        cloud,
-        precip,
-        recent_rain: recentRain,
-        terrain,
-        stability,
-      });
-      return { id: k.id, polygons: e.polygons };
-    });
-  }, [showEnvelope, showAllLkpEnvelopes, lkps, effectiveWind, nowISO, tempF, rh, cloud, precip, recentRain, terrain, stability]);
-
-  // Offline banner
+  // ===== Offline banner =====
   const [online, setOnline] = useState(true);
   useEffect(() => {
     const upd = () => setOnline(navigator.onLine);
@@ -261,7 +327,7 @@ export default function LiveMap() {
     };
   }, []);
 
-  // Click handling for map modes
+  // ===== Click handling =====
   async function handleMapClick(lat: number, lon: number) {
     if (mapMode === "addTrap") {
       const t: Trap = { id: uid("trap"), lat, lon, label: newTrapLabel || "Terrain trap" };
@@ -269,7 +335,24 @@ export default function LiveMap() {
       return;
     }
 
-    // setSource mode
+    // SetSource mode
+    if (mode === "scenario") {
+      setScenarioLL({ lat, lon });
+      setScenarioTimeISO(isoNow());
+      recomputeSrcPoint(mapRef.current, { lat, lon });
+
+      // In scenario, auto wind uses historical at scenarioTimeISO
+      if (windMode === "historical") {
+        try {
+          await fetchWind(lat, lon, "historical", scenarioTimeISO);
+        } catch (e: any) {
+          alert(e?.message || String(e));
+        }
+      }
+      return;
+    }
+
+    // LIVE
     if (lockSource && activeLkp) return;
 
     const newId = activeLkp ? activeLkp.id : uid("lkp");
@@ -291,26 +374,19 @@ export default function LiveMap() {
 
     if (windMode !== "manual") {
       try {
-        await fetchWind(lat, lon);
+        const apiMode = windMode === "hourly" ? "hourly" : "current";
+        await fetchWind(lat, lon, apiMode);
       } catch (e: any) {
         alert(e?.message || String(e));
       }
     }
   }
 
-  // Start points from active envelope
+  // ===== Start points from envelope =====
   const startPoints = envelopeNow ? envelopeNow.recommended_start_points : null;
 
-  const elapsedMin = useMemo(() => {
-    if (!activeLkp) return null;
-    const t0 = Date.parse(activeLkp.timeISO);
-    const t1 = Date.parse(nowISO);
-    if (!Number.isFinite(t0) || !Number.isFinite(t1)) return null;
-    return Math.max(0, Math.round((t1 - t0) / 60000));
-  }, [activeLkp, nowISO]);
-
   return (
-    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 420px", gap: 16, alignItems: "start" }}>
+    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 440px", gap: 16, alignItems: "start" }}>
       {/* MAP */}
       <div
         ref={containerRef}
@@ -336,10 +412,10 @@ export default function LiveMap() {
             zoom={zoom}
             onMapReady={(m: LeafletMap) => {
               mapRef.current = m;
-              recomputeSrcPoint(m, sourceLL);
+              recomputeSrcPoint(m, selectedLL);
             }}
             onViewChanged={(m: LeafletMap) => {
-              recomputeSrcPoint(m, sourceLL);
+              recomputeSrcPoint(m, selectedLL);
             }}
             onMapClick={handleMapClick}
             showUserLocation={showUserLocation}
@@ -351,19 +427,9 @@ export default function LiveMap() {
             envelopeBands={envelopeBands}
             startPoints={startPoints}
             traps={traps}
-            lkps={lkps}
-            activeLkpId={activeLkpId}
+            lkps={mode === "live" ? lkps : (virtualScenarioLkp ? [virtualScenarioLkp] : [])}
+            activeLkpId={mode === "live" ? activeLkpId : (virtualScenarioLkp ? virtualScenarioLkp.id : null)}
           />
-
-          {/* Additional envelopes for all LKPs (NOW) */}
-          {showEnvelope && showAllLkpEnvelopes && allLkpEnvelopes?.length ? (
-            allLkpEnvelopes.map((e) => (
-              <React.Fragment key={`all-${e.id}`}>
-                {/* draw residual only to avoid clutter */}
-                {/* (Leaflet polygons are already being rendered in LeafletMapInner for active/bands) */}
-              </React.Fragment>
-            ))
-          ) : null}
 
           {/* Canvas cone */}
           <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 999 }}>
@@ -374,7 +440,7 @@ export default function LiveMap() {
               wind={effectiveWind}
               lengthPx={lengthPx}
               halfAngleDeg={halfAngle}
-              label={sourceLL ? `Source @ ${sourceLL.lat.toFixed(5)}, ${sourceLL.lon.toFixed(5)}` : "Click map to set source"}
+              label={selectedLL ? `Point @ ${selectedLL.lat.toFixed(5)}, ${selectedLL.lon.toFixed(5)}` : "Click map to set point"}
             />
           </div>
         </div>
@@ -384,72 +450,116 @@ export default function LiveMap() {
       <div style={{ padding: 12, border: "1px solid #e5e7eb", borderRadius: 12 }}>
         <h3 style={{ marginTop: 0 }}>Live Map</h3>
 
-        {/* Multi-LKP controls */}
-        <label style={{ display: "block", marginTop: 10 }}>LKPs</label>
-        <div style={{ display: "grid", gap: 8 }}>
-          <button
-            onClick={() => {
-              if (!sourceLL) return;
-              const id = uid("lkp");
-              const n: LKP = { id, lat: sourceLL.lat, lon: sourceLL.lon, timeISO: isoNow(), label: `LKP ${lkps.length + 1}` };
-              setLkps((p) => [n, ...p]);
-              setActiveLkpId(id);
-            }}
-            style={{ padding: 10, borderRadius: 10 }}
-            disabled={!sourceLL}
-          >
-            Add new LKP from current source
-          </button>
+        {/* Mode toggle */}
+        <label style={{ display: "block", marginTop: 8 }}>Mode</label>
+        <select
+          value={mode}
+          onChange={(e) => {
+            const v = e.target.value as "live" | "scenario";
+            setMode(v);
 
-          <select
-            value={activeLkpId ?? ""}
-            onChange={(e) => setActiveLkpId(e.target.value || null)}
-            style={{ padding: 10, borderRadius: 10 }}
-          >
-            <option value="">(no active LKP)</option>
-            {lkps.map((k) => (
-              <option key={k.id} value={k.id}>
-                {k.label ?? "LKP"} — {new Date(k.timeISO).toLocaleString()}
-              </option>
-            ))}
-          </select>
+            // Adjust wind mode defaults
+            if (v === "scenario") {
+              setWindMode((prev) => (prev === "manual" ? "manual" : "historical"));
+            } else {
+              setWindMode((prev) => (prev === "manual" ? "manual" : "current"));
+            }
 
-          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <input type="checkbox" checked={showAllLkpEnvelopes} onChange={(e) => setShowAllLkpEnvelopes(e.target.checked)} />
-            Show envelopes for all LKPs (busy)
-          </label>
-
-          <div style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 12, whiteSpace: "pre-wrap", background: "#0b1220", color: "white", padding: 10, borderRadius: 10 }}>
-            {activeLkp ? `ACTIVE LKP\nlat: ${activeLkp.lat}\nlon: ${activeLkp.lon}\nLKP time: ${activeLkp.timeISO}\nelapsed: ${elapsedMin ?? "n/a"} min` : "Set an active LKP by clicking the map"}
-          </div>
-        </div>
-
-        {/* Source behavior */}
-        <label style={{ display: "block", marginTop: 12 }}>Source behavior</label>
-        <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <input type="checkbox" checked={lockSource} onChange={(e) => setLockSource(e.target.checked)} />
-          Lock source until cleared
-        </label>
-
-        <button
-          onClick={() => {
-            // clear active only
-            if (!activeLkpId) return;
-            setLkps((prev) => prev.filter((k) => k.id !== activeLkpId));
-            setActiveLkpId(null);
-            setSrcPoint(null);
             setWind(null);
+            setSrcPoint(null);
           }}
-          style={{ padding: 10, borderRadius: 10, marginTop: 8, width: "100%" }}
-          disabled={!activeLkpId}
+          style={{ width: "100%", padding: 10, borderRadius: 10 }}
         >
-          Clear active LKP
-        </button>
+          <option value="live">Live / Operational</option>
+          <option value="scenario">Scenario / Historical</option>
+        </select>
+
+        {mode === "scenario" ? (
+          <>
+            {/* Scenario controls */}
+            <label style={{ display: "block", marginTop: 12 }}>Scenario label</label>
+            <input
+              value={scenarioLabel}
+              onChange={(e) => setScenarioLabel(e.target.value)}
+              style={{ width: "100%", padding: 10, borderRadius: 10 }}
+              placeholder="Scenario label"
+            />
+
+            <label style={{ display: "block", marginTop: 12 }}>Scenario time (local)</label>
+            <input
+              type="datetime-local"
+              value={isoToLocalInput(scenarioTimeISO)}
+              onChange={(e) => {
+                const iso = localInputToIso(e.target.value);
+                setScenarioTimeISO(iso);
+
+                // If we have a location and in historical mode, refresh wind for that timestamp
+                if (scenarioLL && windMode === "historical") {
+                  fetchWind(scenarioLL.lat, scenarioLL.lon, "historical", iso).catch(() => {});
+                }
+              }}
+              style={{ width: "100%", padding: 10, borderRadius: 10 }}
+            />
+
+            <label style={{ display: "block", marginTop: 12 }}>Elapsed minutes since LKP</label>
+            <input
+              type="range"
+              min={0}
+              max={360}
+              value={scenarioElapsedMin}
+              onChange={(e) => setScenarioElapsedMin(Number(e.target.value))}
+              style={{ width: "100%" }}
+            />
+            <div style={{ fontSize: 12, color: "#6b7280" }}>{scenarioElapsedMin} minutes</div>
+
+            <div style={{ marginTop: 10, fontSize: 12, color: "#6b7280" }}>
+              Click map to set scenario location. Wind (Auto Historical) pulls nearest hourly wind for that timestamp.
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Live LKP controls */}
+            <label style={{ display: "block", marginTop: 12 }}>LKPs (Live)</label>
+            <div style={{ display: "grid", gap: 8 }}>
+              <select
+                value={activeLkpId ?? ""}
+                onChange={(e) => setActiveLkpId(e.target.value || null)}
+                style={{ padding: 10, borderRadius: 10 }}
+              >
+                <option value="">(no active LKP)</option>
+                {lkps.map((k) => (
+                  <option key={k.id} value={k.id}>
+                    {k.label ?? "LKP"} — {new Date(k.timeISO).toLocaleString()}
+                  </option>
+                ))}
+              </select>
+
+              <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input type="checkbox" checked={lockSource} onChange={(e) => setLockSource(e.target.checked)} />
+                Lock source until cleared
+              </label>
+
+              <button
+                onClick={() => {
+                  if (!activeLkpId) return;
+                  setLkps((prev) => prev.filter((k) => k.id !== activeLkpId));
+                  setActiveLkpId(null);
+                  setSrcPoint(null);
+                  setWind(null);
+                }}
+                style={{ padding: 10, borderRadius: 10 }}
+                disabled={!activeLkpId}
+              >
+                Clear active LKP
+              </button>
+            </div>
+          </>
+        )}
 
         {/* Map mode */}
         <label style={{ display: "block", marginTop: 12 }}>Map mode</label>
         <select value={mapMode} onChange={(e) => setMapMode(e.target.value as any)} style={{ width: "100%", padding: 10, borderRadius: 10 }}>
-          <option value="setSource">Set/Move Source (LKP)</option>
+          <option value="setSource">{mode === "scenario" ? "Set Scenario Location" : "Set/Move Source (LKP)"}</option>
           <option value="addTrap">Add Terrain Trap Marker</option>
         </select>
 
@@ -461,11 +571,7 @@ export default function LiveMap() {
               placeholder="Trap label (Drainage / Tree line / Leeward building)"
               style={{ padding: 10, borderRadius: 10 }}
             />
-            <button
-              onClick={() => setTraps([])}
-              style={{ padding: 10, borderRadius: 10 }}
-              disabled={!traps.length}
-            >
+            <button onClick={() => setTraps([])} style={{ padding: 10, borderRadius: 10 }} disabled={!traps.length}>
               Clear all traps
             </button>
           </div>
@@ -474,12 +580,12 @@ export default function LiveMap() {
         {/* Envelope */}
         <label style={{ display: "block", marginTop: 12 }}>Envelope</label>
         <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <input type="checkbox" checked={showEnvelope} onChange={(e) => setShowEnvelope(e.target.checked)} disabled={!activeLkp} />
+          <input type="checkbox" checked={showEnvelope} onChange={(e) => setShowEnvelope(e.target.checked)} disabled={!selectedLL} />
           Show probability envelope
         </label>
 
         <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <input type="checkbox" checked={showTimeBands} onChange={(e) => setShowTimeBands(e.target.checked)} disabled={!activeLkp || !showEnvelope} />
+          <input type="checkbox" checked={showTimeBands} onChange={(e) => setShowTimeBands(e.target.checked)} disabled={!selectedLL || !showEnvelope} />
           Show time bands (15/30/60/120)
         </label>
 
@@ -488,17 +594,35 @@ export default function LiveMap() {
         <select
           value={windMode}
           onChange={(e) => {
-            const v = e.target.value as "current" | "hourly" | "manual";
+            const v = e.target.value as any;
             setWindMode(v);
-            if ((v === "current" || v === "hourly") && sourceLL) {
-              setTimeout(() => fetchWind(sourceLL.lat, sourceLL.lon), 0);
+
+            if (!selectedLL) return;
+
+            // live mode fetch
+            if (mode === "live" && (v === "current" || v === "hourly")) {
+              const apiMode = v === "hourly" ? "hourly" : "current";
+              fetchWind(selectedLL.lat, selectedLL.lon, apiMode).catch(() => {});
+            }
+            // scenario mode fetch
+            if (mode === "scenario" && v === "historical") {
+              fetchWind(selectedLL.lat, selectedLL.lon, "historical", scenarioTimeISO).catch(() => {});
             }
           }}
           style={{ width: "100%", padding: 10, borderRadius: 10 }}
         >
-          <option value="current">Auto (Current)</option>
-          <option value="hourly">Auto (Hourly)</option>
-          <option value="manual">Manual</option>
+          {mode === "live" ? (
+            <>
+              <option value="current">Auto (Current)</option>
+              <option value="hourly">Auto (Hourly)</option>
+              <option value="manual">Manual</option>
+            </>
+          ) : (
+            <>
+              <option value="historical">Auto (Historical)</option>
+              <option value="manual">Manual</option>
+            </>
+          )}
         </select>
 
         {windMode === "manual" && (
@@ -569,26 +693,11 @@ export default function LiveMap() {
           <input type="number" min={5} max={60} value={halfAngle === "auto" ? 18 : halfAngle} onChange={(e) => setHalfAngle(Number(e.target.value))} style={{ flex: 1, padding: 10, borderRadius: 10 }} disabled={halfAngle === "auto"} />
         </div>
 
-        {/* My location */}
-        <label style={{ display: "block", marginTop: 12 }}>My location</label>
-        <div style={{ display: "grid", gap: 8 }}>
-          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <input type="checkbox" checked={showUserLocation} onChange={(e) => setShowUserLocation(e.target.checked)} />
-            Show my location
-          </label>
-
-          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <input type="checkbox" checked={followUser} onChange={(e) => setFollowUser(e.target.checked)} disabled={!showUserLocation} />
-            Follow me
-          </label>
-
-          <button onClick={() => setLocateToken((n) => n + 1)} style={{ padding: 10, borderRadius: 10 }} disabled={!showUserLocation}>
-            Locate me now
-          </button>
-
-          <div style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 12, whiteSpace: "pre-wrap", background: "#0b1220", color: "white", padding: 10, borderRadius: 10 }}>
-            {userLoc ? `my lat: ${userLoc.lat}\nmy lon: ${userLoc.lon}` : "my location: (not available)"}
-          </div>
+        {/* Summary */}
+        <div style={{ marginTop: 12, fontFamily: "ui-monospace, Menlo, monospace", fontSize: 12, whiteSpace: "pre-wrap", background: "#0b1220", color: "white", padding: 10, borderRadius: 10 }}>
+          {selectedLL ? `lat: ${selectedLL.lat}\nlon: ${selectedLL.lon}\nelapsed: ${elapsedMin ?? "n/a"} min\n` : "Set a point to begin\n"}
+          {effectiveWind ? `wind_from_deg: ${effectiveWind.wind_dir_from_deg}\nwind_speed_mps: ${effectiveWind.wind_speed_mps}\n` : "wind: (not set)\n"}
+          {envelopeNow ? `confidence: ${envelopeNow.confidence_score} (${envelopeNow.confidence_band})\nreset: ${envelopeNow.reset_recommendation_minutes} min\n` : ""}
         </div>
 
         {/* ICS Notes + export */}
@@ -603,16 +712,15 @@ export default function LiveMap() {
 
             const mph = windMode === "manual" ? manualSpeedMph : (effectiveWind?.wind_speed_mps ?? 0) * 2.236936;
 
-            const envSummary = `Terrain=${terrain}, Stability=${stability}, Cloud=${cloud}, Precip=${precip}${recentRain ? ", recentRain" : ""}`;
+            const context =
+              mode === "scenario"
+                ? `SCENARIO @ ${scenarioTimeISO} +${scenarioElapsedMin}m`
+                : `LIVE @ ${nowISO}`;
 
-            const confSummary = envelopeNow
-              ? `Envelope: C=${envelopeNow.confidence_score} (${envelopeNow.confidence_band}); reset ${envelopeNow.reset_recommendation_minutes}m`
-              : "";
-
-            await downloadDataUrlPNG_ICS(dataUrl, "scent_cone_live_ics.png", {
-              notes: [icsNotes, envSummary, confSummary].filter(Boolean).join(" | "),
-              lat: sourceLL?.lat,
-              lon: sourceLL?.lon,
+            await downloadDataUrlPNG_ICS(dataUrl, "scent_cone_ics.png", {
+              notes: [context, icsNotes].filter(Boolean).join(" | "),
+              lat: selectedLL?.lat,
+              lon: selectedLL?.lon,
               windSource: windMode,
               windFromDeg: effectiveWind?.wind_dir_from_deg,
               windSpeedMps: effectiveWind?.wind_speed_mps,
@@ -629,7 +737,7 @@ export default function LiveMap() {
         </button>
 
         <div style={{ marginTop: 10, fontSize: 12, color: "#6b7280" }}>
-          <b>Disclaimer:</b> This tool is decision support only and does not replace handler judgment.
+          <b>Disclaimer:</b> Scenario mode uses nearest available historical hourly wind and is decision support only.
         </div>
       </div>
     </div>
