@@ -5,10 +5,20 @@ import {
   useMap,
   useMapEvents,
   CircleMarker,
+  Polygon,
+  Tooltip,
 } from "react-leaflet";
 import type { LatLngExpression } from "leaflet";
 import type { Map as LeafletMap } from "leaflet";
 import "leaflet/dist/leaflet.css";
+
+type LatLon = { lat: number; lon: number };
+
+type EnvelopePolygons = {
+  core: LatLon[];
+  fringe: LatLon[];
+  residual: LatLon[];
+};
 
 function MapReporter({
   onReady,
@@ -25,6 +35,7 @@ function MapReporter({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Recompute overlays after pan/zoom ends (prevents mobile “drift” during kinetic move)
   useMapEvents({
     zoomend() {
       onViewChanged(map);
@@ -40,11 +51,7 @@ function MapReporter({
   return null;
 }
 
-function ClickHandler({
-  onClick,
-}: {
-  onClick: (lat: number, lon: number) => void;
-}) {
+function ClickHandler({ onClick }: { onClick: (lat: number, lon: number) => void }) {
   useMapEvents({
     click(e) {
       onClick(e.latlng.lat, e.latlng.lng);
@@ -124,22 +131,36 @@ function UserLocationLayer({
 
   return (
     <>
-      <CircleMarker center={[pos.lat, pos.lon]} radius={8} pathOptions={{ color: "#2563eb" }} />
+      <CircleMarker center={[pos.lat, pos.lon]} radius={8} pathOptions={{ color: "#2563eb" }}>
+        <Tooltip direction="top" offset={[0, -10]} opacity={0.9}>
+          My location
+        </Tooltip>
+      </CircleMarker>
       <CircleMarker center={[pos.lat, pos.lon]} radius={18} pathOptions={{ color: "#93c5fd" }} />
     </>
   );
 }
 
+function toLatLngs(poly: LatLon[]) {
+  return poly.map((p) => [p.lat, p.lon] as [number, number]);
+}
+
 export default function LeafletMapInner({
   center,
   zoom,
+
   onMapClick,
   onMapReady,
   onViewChanged,
+
   showUserLocation,
   followUser,
   locateToken,
   onUserLocation,
+
+  showEnvelope,
+  envelopePolygons,
+  startPoints,
 }: {
   center: LatLngExpression;
   zoom: number;
@@ -152,6 +173,10 @@ export default function LeafletMapInner({
   followUser: boolean;
   locateToken: number;
   onUserLocation?: (lat: number, lon: number) => void;
+
+  showEnvelope: boolean;
+  envelopePolygons?: EnvelopePolygons | null;
+  startPoints?: Array<{ label: string; point: LatLon }> | null;
 }) {
   return (
     <MapContainer center={center} zoom={zoom} style={{ width: "100%", height: "100%" }}>
@@ -164,6 +189,40 @@ export default function LeafletMapInner({
       <MapReporter onReady={onMapReady} onViewChanged={onViewChanged} />
       <ClickHandler onClick={onMapClick} />
 
+      {/* Envelope polygons */}
+      {showEnvelope && envelopePolygons?.residual?.length ? (
+        <>
+          <Polygon
+            positions={toLatLngs(envelopePolygons.residual)}
+            pathOptions={{ color: "#f59e0b", weight: 2, fillOpacity: 0.10 }}
+          />
+          <Polygon
+            positions={toLatLngs(envelopePolygons.fringe)}
+            pathOptions={{ color: "#fb7185", weight: 2, fillOpacity: 0.12 }}
+          />
+          <Polygon
+            positions={toLatLngs(envelopePolygons.core)}
+            pathOptions={{ color: "#ef4444", weight: 3, fillOpacity: 0.14 }}
+          />
+        </>
+      ) : null}
+
+      {/* Recommended start points */}
+      {showEnvelope && startPoints?.length
+        ? startPoints.map((sp, idx) => (
+            <CircleMarker
+              key={`${sp.label}-${idx}`}
+              center={[sp.point.lat, sp.point.lon]}
+              radius={6}
+              pathOptions={{ color: "#111827" }}
+            >
+              <Tooltip direction="top" offset={[0, -10]} opacity={0.95}>
+                {sp.label}
+              </Tooltip>
+            </CircleMarker>
+          ))
+        : null}
+
       <UserLocationLayer
         enabled={showUserLocation}
         follow={followUser}
@@ -173,6 +232,7 @@ export default function LeafletMapInner({
     </MapContainer>
   );
 }
+
 
 
 
