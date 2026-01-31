@@ -111,9 +111,17 @@ export default function ConeCanvas(props: Props) {
     ctx.fillRect(12, 12, 460, 72);
     ctx.fillStyle = "white";
     ctx.font = "18px system-ui";
-    ctx.fillText(`Wind from ${from}° @ ${speedStr}  → downwind ${down}°`, 20, 40);
+    ctx.fillText(
+      `Wind from ${from}° @ ${speedStr}  → downwind ${down}°`,
+      20,
+      40
+    );
     ctx.font = "14px system-ui";
-    ctx.fillText(props.label || "Probable scent cone (planning estimate)", 20, 64);
+    ctx.fillText(
+      props.label || "Probable scent cone (planning estimate)",
+      20,
+      64
+    );
   }, [
     props.width,
     props.height,
@@ -150,18 +158,17 @@ export default function ConeCanvas(props: Props) {
 export function downloadCanvasPNG(
   canvas: HTMLCanvasElement,
   filename = "scent_cone.png"
-) {
+): void {
   const a = document.createElement("a");
   a.download = filename;
   a.href = canvas.toDataURL("image/png");
   a.click();
 }
-export function downloadCanvasPNG_ICS(
-  canvas: HTMLCanvasElement,
+
+export async function downloadDataUrlPNG_ICS(
+  dataUrl: string,
   filename: string,
   meta: {
-    incidentName?: string;
-    operationPeriod?: string;
     notes?: string;
     lat?: number;
     lon?: number;
@@ -174,34 +181,47 @@ export function downloadCanvasPNG_ICS(
     coneLengthPx?: number;
     coneHalfAngleDeg?: number | "auto";
   }
-) {
-  // Create a copy canvas so we don’t permanently draw the footer on-screen
+): Promise<void> {
+  const img = new Image();
+  img.src = dataUrl;
+
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = () => reject(new Error("Failed to load export image"));
+  });
+
+  const baseW = img.width;
+  const baseH = img.height;
+
   const out = document.createElement("canvas");
-  out.width = canvas.width;
-  out.height = canvas.height + 180; // add footer space
+  out.width = baseW;
+  out.height = baseH + 180;
+
   const ctx = out.getContext("2d");
   if (!ctx) return;
 
-  // Draw original image
-  ctx.drawImage(canvas, 0, 0);
+  ctx.drawImage(img, 0, 0);
 
   // Footer background
   ctx.fillStyle = "rgba(0,0,0,0.85)";
-  ctx.fillRect(0, canvas.height, out.width, 180);
+  ctx.fillRect(0, baseH, out.width, 180);
 
-  // Text
+  // Header
   ctx.fillStyle = "white";
   ctx.font = "18px system-ui";
-  ctx.fillText("ICS Scent Cone Planning Export (Decision Support)", 16, canvas.height + 28);
+  ctx.fillText("ICS Scent Cone Planning Export (Decision Support)", 16, baseH + 28);
 
+  // Line 1
   ctx.font = "14px system-ui";
-  const line1 = `Local Time: ${meta.timeLocal ?? "n/a"}   |   UTC: ${meta.timeUtc ?? "n/a"}   |   Wind Source: ${meta.windSource ?? "n/a"}`;
-  ctx.fillText(line1, 16, canvas.height + 55);
+  ctx.fillText(
+    `Local Time: ${meta.timeLocal ?? "n/a"}   |   UTC: ${meta.timeUtc ?? "n/a"}   |   Wind Source: ${meta.windSource ?? "n/a"}`,
+    16,
+    baseH + 55
+  );
 
+  // Line 2
   const windStr =
-    meta.windFromDeg != null
-      ? `Wind FROM: ${Math.round(meta.windFromDeg)}°`
-      : "Wind FROM: n/a";
+    meta.windFromDeg != null ? `Wind FROM: ${Math.round(meta.windFromDeg)}°` : "Wind FROM: n/a";
   const speedStr =
     meta.windSpeedMph != null
       ? `${meta.windSpeedMph.toFixed(1)} mph`
@@ -209,25 +229,36 @@ export function downloadCanvasPNG_ICS(
       ? `${meta.windSpeedMps.toFixed(2)} m/s`
       : "n/a";
 
-  const line2 = `Location: ${meta.lat?.toFixed(6) ?? "n/a"}, ${meta.lon?.toFixed(6) ?? "n/a"}   |   ${windStr} @ ${speedStr}`;
-  ctx.fillText(line2, 16, canvas.height + 78);
+  ctx.fillText(
+    `Location: ${meta.lat?.toFixed(6) ?? "n/a"}, ${meta.lon?.toFixed(6) ?? "n/a"}   |   ${windStr} @ ${speedStr}`,
+    16,
+    baseH + 78
+  );
 
-  const coneStr = `Cone: length=${meta.coneLengthPx ?? "n/a"}px   half-angle=${meta.coneHalfAngleDeg ?? "n/a"}`;
-  ctx.fillText(coneStr, 16, canvas.height + 101);
+  // Line 3
+  ctx.fillText(
+    `Cone: length=${meta.coneLengthPx ?? "n/a"}px   half-angle=${meta.coneHalfAngleDeg ?? "n/a"}`,
+    16,
+    baseH + 101
+  );
 
-  // Notes block
+  // Notes
   ctx.font = "13px system-ui";
   const notes = meta.notes?.trim() ? meta.notes.trim() : "(no notes)";
-  ctx.fillText(`Notes: ${notes}`.slice(0, 140), 16, canvas.height + 124);
+  ctx.fillText(`Notes: ${notes}`.slice(0, 160), 16, baseH + 124);
 
   // Disclaimer
   ctx.fillStyle = "rgba(255,255,255,0.85)";
-  ctx.fillText("Disclaimer: This is a planning estimate only. Terrain/thermals/obstacles can significantly alter scent behavior.", 16, canvas.height + 154);
+  ctx.fillText(
+    "Disclaimer: Planning estimate only. Terrain/thermals/obstacles can significantly alter scent behavior.",
+    16,
+    baseH + 154
+  );
 
-  // Download
   const a = document.createElement("a");
   a.download = filename;
   a.href = out.toDataURL("image/png");
   a.click();
 }
+
 
