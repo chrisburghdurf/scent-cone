@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Head from "next/head";
 import LiveMap from "@/components/LiveMap";
 import ScreenshotMode from "@/components/ScreenshotMode";
@@ -6,18 +6,38 @@ import ScreenshotMode from "@/components/ScreenshotMode";
 export default function Home() {
   const [tab, setTab] = useState<"live" | "screenshot">("live");
 
+  // Register service worker (PWA/offline shell)
+  useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/service-worker.js").catch(() => {});
+    }
+  }, []);
+
   return (
     <>
       <Head>
         <title>Scent Cone Overlay</title>
         <meta
           name="description"
-          content="Scent cone visualization for operational planning"
+          content="Scent cone visualization and probability envelope for operational planning."
         />
-        <link rel="icon" href="/favicon.ico" />
-        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon-v2.png" />
-        <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
 
+        {/* PWA */}
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#0b1220" />
+
+        {/* Icons */}
+        <link rel="icon" href="/favicon.ico" />
+        <link
+          rel="apple-touch-icon"
+          sizes="180x180"
+          href="/apple-touch-icon-v2.png"
+        />
+        <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+        <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
+
+        {/* Mobile viewport */}
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       </Head>
 
       <main
@@ -30,7 +50,7 @@ export default function Home() {
         {/* Glass card wrapper for readability over background */}
         <div
           style={{
-            maxWidth: 1200,
+            maxWidth: 1250,
             margin: "0 auto",
             background: "rgba(255,255,255,0.92)",
             borderRadius: 14,
@@ -46,6 +66,7 @@ export default function Home() {
               alignItems: "center",
               gap: 12,
               marginBottom: 12,
+              flexWrap: "wrap",
             }}
           >
             <img
@@ -57,10 +78,10 @@ export default function Home() {
                 objectFit: "contain",
               }}
             />
-            <div>
+            <div style={{ flex: 1, minWidth: 220 }}>
               <h1 style={{ margin: 0 }}>Scent Cone Overlay</h1>
               <p style={{ margin: 0, color: "#6b7280", fontSize: 14 }}>
-                Operational planning tool
+                Decision-support for scent dispersion planning (not route prediction)
               </p>
             </div>
           </div>
