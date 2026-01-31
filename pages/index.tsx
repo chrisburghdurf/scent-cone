@@ -9,7 +9,7 @@ export default function Home() {
     <main style={{ padding: 18, fontFamily: "system-ui, -apple-system, Segoe UI, Roboto" }}>
       <h1 style={{ marginBottom: 6 }}>Scent Cone Overlay</h1>
       <p style={{ marginTop: 0, color: "#6b7280" }}>
-        Neutral basemap + Windy wind data. Planning estimate only.
+        Neutral basemap + Open-Meteo wind data. Planning estimate only.
       </p>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
@@ -26,6 +26,7 @@ export default function Home() {
         >
           Live Map
         </button>
+
         <button
           onClick={() => setTab("screenshot")}
           style={{
@@ -45,4 +46,5 @@ export default function Home() {
     </main>
   );
 }
+
 

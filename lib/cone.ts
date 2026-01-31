@@ -10,14 +10,12 @@ export function mpsToMph(mps: number) {
 }
 
 export function defaultHalfAngleDegFromMph(mph: number) {
-  // planning heuristic for cone half-angle
   if (mph < 3) return 45;
   if (mph < 10) return 25;
   if (mph < 20) return 18;
   return 12;
 }
 
-// Bearing degrees (0=N,90=E) -> canvas radians (0=E, clockwise positive)
 export function bearingToCanvasRad(bearingDeg: number) {
   return ((bearingDeg - 90) * Math.PI) / 180;
 }
@@ -44,23 +42,13 @@ export function computeCone(
   const theta = bearingToCanvasRad(downwindDeg);
   const half = (halfAngleDeg * Math.PI) / 180;
 
-  const tip = {
-    x: src.x + Math.cos(theta) * lengthPx,
-    y: src.y + Math.sin(theta) * lengthPx,
-  };
-
+  const tip = { x: src.x + Math.cos(theta) * lengthPx, y: src.y + Math.sin(theta) * lengthPx };
   const leftTheta = theta - half;
   const rightTheta = theta + half;
 
-  const left = {
-    x: src.x + Math.cos(leftTheta) * lengthPx,
-    y: src.y + Math.sin(leftTheta) * lengthPx,
-  };
-
-  const right = {
-    x: src.x + Math.cos(rightTheta) * lengthPx,
-    y: src.y + Math.sin(rightTheta) * lengthPx,
-  };
+  const left = { x: src.x + Math.cos(leftTheta) * lengthPx, y: src.y + Math.sin(leftTheta) * lengthPx };
+  const right = { x: src.x + Math.cos(rightTheta) * lengthPx, y: src.y + Math.sin(rightTheta) * lengthPx };
 
   return { tip, left, right, centerRad: theta, downwindDeg };
 }
+

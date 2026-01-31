@@ -21,22 +21,21 @@ function MapReporter({
 
   useEffect(() => {
     onReady(map);
-    // Also push an initial view update so parent can compute pixel positions
     onViewChanged(map);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useMapEvents({
-  zoomend() {
-    onViewChanged(map);
-  },
-  moveend() {
-    onViewChanged(map);
-  },
-  resize() {
-    onViewChanged(map);
-  },
-});
+    zoomend() {
+      onViewChanged(map);
+    },
+    moveend() {
+      onViewChanged(map);
+    },
+    resize() {
+      onViewChanged(map);
+    },
+  });
 
   return null;
 }
@@ -174,5 +173,6 @@ export default function LeafletMapInner({
     </MapContainer>
   );
 }
+
 
 

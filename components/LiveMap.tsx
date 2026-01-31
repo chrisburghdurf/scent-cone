@@ -7,49 +7,38 @@ import { toPng } from "html-to-image";
 import ConeCanvas, { downloadDataUrlPNG_ICS } from "@/components/ConeCanvas";
 import { WindData } from "@/lib/cone";
 
-const LeafletMapInner = dynamic(() => import("./LeafletMapInner"), { ssr: false });
+const LeafletMapInner = dynamic(() => import("./LeafletMapClient"), { ssr: false });
 
 export default function LiveMap() {
   const center: LatLngExpression = useMemo(() => [27.49, -82.45], []);
   const zoom = 14;
 
-  // Source is stored as LAT/LON (stable)
   const [sourceLL, setSourceLL] = useState<{ lat: number; lon: number } | null>(null);
-  // Pixel position is derived from map view + sourceLL
   const [srcPoint, setSrcPoint] = useState<{ x: number; y: number } | null>(null);
 
   const [wind, setWind] = useState<WindData | null>(null);
 
-  // Cone controls
   const [lengthPx, setLengthPx] = useState(500);
   const [halfAngle, setHalfAngle] = useState<"auto" | number>("auto");
 
-  // Wind source controls
   const [windMode, setWindMode] = useState<"current" | "hourly" | "manual">("current");
   const [manualSpeedMph, setManualSpeedMph] = useState<number>(11);
   const [manualFromDeg, setManualFromDeg] = useState<number>(315);
 
-  // Keep source until cleared
   const [lockSource, setLockSource] = useState(true);
-
-  // ICS notes
   const [icsNotes, setIcsNotes] = useState<string>("");
 
-  // User location controls
   const [showUserLocation, setShowUserLocation] = useState(true);
   const [followUser, setFollowUser] = useState(false);
   const [locateToken, setLocateToken] = useState(0);
   const [userLoc, setUserLoc] = useState<{ lat: number; lon: number } | null>(null);
 
-  // Map + export refs
   const mapRef = useRef<LeafletMap | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const exportRef = useRef<HTMLDivElement | null>(null);
 
-  // Size for overlay canvas (match container)
   const [size, setSize] = useState<{ w: number; h: number }>({ w: 1200, h: 800 });
 
-  // Responsive: stack on mobile
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     const update = () => setIsMobile(window.innerWidth <= 820);
@@ -58,7 +47,6 @@ export default function LiveMap() {
     return () => window.removeEventListener("resize", update);
   }, []);
 
-  // Keep overlay sized to container
   useEffect(() => {
     if (!containerRef.current) return;
     const el = containerRef.current;
@@ -70,15 +58,6 @@ export default function LiveMap() {
   }, []);
 
   function recomputeSrcPoint(map: LeafletMap | null, ll: { lat: number; lon: number } | null) {
-    // Force Leaflet to redraw when layout changes (mobile orientation, resize)
-useEffect(() => {
-  if (!mapRef.current) return;
-  setTimeout(() => {
-    mapRef.current?.invalidateSize();
-    recomputeSrcPoint(mapRef.current, sourceLL);
-  }, 150);
-}, [isMobile]);
-
     if (!map || !ll) {
       setSrcPoint(null);
       return;
@@ -86,6 +65,16 @@ useEffect(() => {
     const pt = map.latLngToContainerPoint([ll.lat, ll.lon]);
     setSrcPoint({ x: pt.x, y: pt.y });
   }
+
+  // Force redraw when switching layouts (mobile/responsive)
+  useEffect(() => {
+    if (!mapRef.current) return;
+    setTimeout(() => {
+      mapRef.current?.invalidateSize();
+      recomputeSrcPoint(mapRef.current, sourceLL);
+    }, 150);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMobile]);
 
   async function fetchWind(lat: number, lon: number) {
     setWind(null);
@@ -120,7 +109,7 @@ useEffect(() => {
         alignItems: "start",
       }}
     >
-      {/* MAP AREA */}
+      {/* MAP */}
       <div
         ref={containerRef}
         style={{
@@ -139,21 +128,16 @@ useEffect(() => {
             zoom={zoom}
             onMapReady={(m) => {
               mapRef.current = m;
-              // On ready, compute source pixel if it exists
               recomputeSrcPoint(m, sourceLL);
             }}
             onViewChanged={(m) => {
-              // On pan/zoom/resize, re-project source to pixels so it stays pinned
               recomputeSrcPoint(m, sourceLL);
             }}
             onMapClick={async (lat, lon) => {
-              // If locked and a source exists, ignore clicks until user clears/unlocks
               if (lockSource && sourceLL) return;
 
               const next = { lat, lon };
               setSourceLL(next);
-
-              // Immediately compute pixel position using current map
               recomputeSrcPoint(mapRef.current, next);
 
               if (windMode === "manual") return;
@@ -170,7 +154,6 @@ useEffect(() => {
             onUserLocation={(lat, lon) => setUserLoc({ lat, lon })}
           />
 
-          {/* Overlay cone */}
           <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 999 }}>
             <ConeCanvas
               width={size.w}
@@ -189,7 +172,7 @@ useEffect(() => {
         </div>
       </div>
 
-      {/* CONTROL PANEL */}
+      {/* PANEL */}
       <div style={{ padding: 12, border: "1px solid #e5e7eb", borderRadius: 12 }}>
         <h3 style={{ marginTop: 0 }}>Live Map</h3>
 
@@ -197,11 +180,10 @@ useEffect(() => {
           <summary style={{ cursor: "pointer", fontWeight: 600 }}>How to use</summary>
           <div style={{ marginTop: 8, color: "#374151", fontSize: 13, lineHeight: 1.4 }}>
             <ul style={{ paddingLeft: 18, margin: 0 }}>
-              <li><b>Click the map</b> to set the scent source point.</li>
-              <li><b>Lock source</b> keeps the point fixed until you clear/unlock it.</li>
-              <li><b>Wind source</b>: Current / Hourly / Manual.</li>
+              <li><b>Click the map</b> to set the source point.</li>
+              <li><b>Lock source</b> keeps it fixed until cleared/unlocked.</li>
               <li><b>Wind FROM degrees</b>: 0=N, 90=E, 180=S, 270=W.</li>
-              <li><b>ICS Export</b> saves map + cone + footer.</li>
+              <li><b>Export</b> saves map + cone + ICS footer.</li>
             </ul>
           </div>
         </details>
@@ -238,7 +220,6 @@ useEffect(() => {
           onChange={(e) => {
             const v = e.target.value as "current" | "hourly" | "manual";
             setWindMode(v);
-
             if ((v === "current" || v === "hourly") && sourceLL) {
               setTimeout(() => fetchWind(sourceLL.lat, sourceLL.lon), 0);
             }
@@ -269,7 +250,7 @@ useEffect(() => {
           </div>
         )}
 
-        {/* User location */}
+        {/* Location */}
         <label style={{ display: "block", marginTop: 12 }}>My location</label>
         <div style={{ display: "grid", gap: 8 }}>
           <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -314,7 +295,7 @@ useEffect(() => {
           </div>
         </div>
 
-        {/* Cone controls */}
+        {/* Cone */}
         <label style={{ display: "block", marginTop: 12 }}>Cone length</label>
         <input
           type="range"
@@ -387,6 +368,8 @@ useEffect(() => {
     </div>
   );
 }
+
+
 
 
 

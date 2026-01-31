@@ -29,18 +29,20 @@ export default function ConeCanvas(props: Props) {
 
     ctx.clearRect(0, 0, props.width, props.height);
 
-    // optional background image (screenshot mode)
     if (props.backgroundImage) {
       ctx.drawImage(props.backgroundImage, 0, 0, props.width, props.height);
     }
 
     if (!props.srcPoint) return;
 
-    // draw source marker even if no wind yet
+    // Source marker
     ctx.fillStyle = "rgba(255,255,255,0.95)";
     ctx.beginPath();
-    ctx.arc(props.srcPoint.x, props.srcPoint.y, 7, 0, Math.PI * 2);
+    ctx.arc(props.srcPoint.x, props.srcPoint.y, 9, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = "rgba(0,0,0,0.8)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
 
     if (!props.wind) return;
 
@@ -92,14 +94,8 @@ export default function ConeCanvas(props: Props) {
     ctx.strokeStyle = "rgba(255,255,255,0.55)";
     ctx.lineWidth = 2.5;
     ctx.setLineDash([10, 10]);
-    ctx.beginPath();
-    ctx.moveTo(props.srcPoint.x, props.srcPoint.y);
-    ctx.lineTo(g.left.x, g.left.y);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(props.srcPoint.x, props.srcPoint.y);
-    ctx.lineTo(g.right.x, g.right.y);
-    ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(props.srcPoint.x, props.srcPoint.y); ctx.lineTo(g.left.x, g.left.y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(props.srcPoint.x, props.srcPoint.y); ctx.lineTo(g.right.x, g.right.y); ctx.stroke();
     ctx.setLineDash([]);
 
     // label
@@ -108,20 +104,12 @@ export default function ConeCanvas(props: Props) {
     const down = Math.round(g.downwindDeg);
 
     ctx.fillStyle = "rgba(0,0,0,0.55)";
-    ctx.fillRect(12, 12, 460, 72);
+    ctx.fillRect(12, 12, 500, 72);
     ctx.fillStyle = "white";
     ctx.font = "18px system-ui";
-    ctx.fillText(
-      `Wind from ${from}° @ ${speedStr}  → downwind ${down}°`,
-      20,
-      40
-    );
+    ctx.fillText(`Wind from ${from}° @ ${speedStr}  → downwind ${down}°`, 20, 40);
     ctx.font = "14px system-ui";
-    ctx.fillText(
-      props.label || "Probable scent cone (planning estimate)",
-      20,
-      64
-    );
+    ctx.fillText(props.label || "Probable scent cone (planning estimate)", 20, 64);
   }, [
     props.width,
     props.height,
@@ -153,16 +141,6 @@ export default function ConeCanvas(props: Props) {
       }}
     />
   );
-}
-
-export function downloadCanvasPNG(
-  canvas: HTMLCanvasElement,
-  filename = "scent_cone.png"
-): void {
-  const a = document.createElement("a");
-  a.download = filename;
-  a.href = canvas.toDataURL("image/png");
-  a.click();
 }
 
 export async function downloadDataUrlPNG_ICS(
@@ -260,5 +238,6 @@ export async function downloadDataUrlPNG_ICS(
   a.href = out.toDataURL("image/png");
   a.click();
 }
+
 
 

@@ -23,7 +23,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return;
     }
 
-    // Request BOTH current + hourly so we can always return something
     const url =
       `https://api.open-meteo.com/v1/forecast` +
       `?latitude=${encodeURIComponent(latNum)}` +
@@ -35,6 +34,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const r = await fetch(url);
     const text = await r.text();
+
     if (!r.ok) {
       res.status(502).json({ error: "Open-Meteo error", status: r.status, body: text.slice(0, 800) });
       return;
@@ -45,14 +45,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const timezone: string | null = js?.timezone ?? null;
     const offsetSec: number = Number(js?.utc_offset_seconds ?? 0);
 
-    // ---------- CURRENT ----------
+    // CURRENT
     const curTime: string | null = js?.current?.time ?? null; // local time string
     const curSpeed: number | null =
       js?.current?.wind_speed_10m != null ? Number(js.current.wind_speed_10m) : null;
     const curDir: number | null =
       js?.current?.wind_direction_10m != null ? normDeg(Number(js.current.wind_direction_10m)) : null;
 
-    // ---------- HOURLY ----------
+    // HOURLY
     const times: string[] = js?.hourly?.time || [];
     const speeds: number[] = js?.hourly?.windspeed_10m || [];
     const dirs: number[] = js?.hourly?.winddirection_10m || [];
@@ -63,7 +63,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       let bestI = 0;
       let best = Number.POSITIVE_INFINITY;
       for (let i = 0; i < times.length; i++) {
-        const tMs = new Date(times[i] + "Z").getTime(); // parse-ish baseline
+        const tMs = new Date(times[i] + "Z").getTime();
         const d = Math.abs(tMs - now);
         if (d < best) {
           best = d;
@@ -78,7 +78,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const hrSpeed: number | null = speeds[hi] != null ? Number(speeds[hi]) : null;
     const hrDir: number | null = dirs[hi] != null ? normDeg(Number(dirs[hi])) : null;
 
-    // Helper to compute UTC iso from local-ish time + offset
     function makeUtcIso(timeLocal: string | null) {
       if (!timeLocal) return null;
       const localMs = new Date(timeLocal + "Z").getTime();
@@ -86,7 +85,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return new Date(utcMs).toISOString();
     }
 
-    // Choose based on requested mode, with fallback
     let chosen = {
       source: "open-meteo" as const,
       mode: modeSafe,
@@ -127,6 +125,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.status(500).json({ error: "Server error", details: String(err?.message || err) });
   }
 }
+
 
 
 

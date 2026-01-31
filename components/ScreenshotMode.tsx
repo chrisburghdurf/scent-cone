@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from "react";
-import ConeCanvas, { downloadCanvasPNG } from "@/components/ConeCanvas";
+import ConeCanvas from "@/components/ConeCanvas";
 import { WindData } from "@/lib/cone";
 
 type CalPoint = {
@@ -9,8 +9,6 @@ type CalPoint = {
 };
 
 function solveLinearMap(a: CalPoint, b: CalPoint) {
-  // Simple north-up screenshot mapping:
-  // lon changes with x, lat changes with y.
   if (!a.px || !b.px || a.lat == null || a.lon == null || b.lat == null || b.lon == null) return null;
 
   const dx = b.px.x - a.px.x;
@@ -38,7 +36,6 @@ export default function ScreenshotMode() {
   const [calB, setCalB] = useState<CalPoint>({ px: null, lat: null, lon: null });
   const [mode, setMode] = useState<"none" | "A" | "B" | "SRC">("none");
 
-  // Wind source controls
   const [windMode, setWindMode] = useState<"current" | "hourly" | "manual">("current");
   const [manualSpeedMph, setManualSpeedMph] = useState<number>(11);
   const [manualFromDeg, setManualFromDeg] = useState<number>(315);
@@ -116,7 +113,6 @@ export default function ScreenshotMode() {
                     return;
                   }
 
-                  // Manual wind option: no API call needed
                   if (windMode === "manual") {
                     setWind({
                       wind_speed_mps: manualSpeedMph / 2.236936,
@@ -218,17 +214,13 @@ export default function ScreenshotMode() {
             <input
               placeholder="Cal A lat"
               value={calA.lat ?? ""}
-              onChange={(e) =>
-                setCalA((p) => ({ ...p, lat: e.target.value === "" ? null : Number(e.target.value) }))
-              }
+              onChange={(e) => setCalA((p) => ({ ...p, lat: e.target.value === "" ? null : Number(e.target.value) }))}
               style={{ flex: 1, padding: 10, borderRadius: 10 }}
             />
             <input
               placeholder="Cal A lon"
               value={calA.lon ?? ""}
-              onChange={(e) =>
-                setCalA((p) => ({ ...p, lon: e.target.value === "" ? null : Number(e.target.value) }))
-              }
+              onChange={(e) => setCalA((p) => ({ ...p, lon: e.target.value === "" ? null : Number(e.target.value) }))}
               style={{ flex: 1, padding: 10, borderRadius: 10 }}
             />
           </div>
@@ -245,17 +237,13 @@ export default function ScreenshotMode() {
             <input
               placeholder="Cal B lat"
               value={calB.lat ?? ""}
-              onChange={(e) =>
-                setCalB((p) => ({ ...p, lat: e.target.value === "" ? null : Number(e.target.value) }))
-              }
+              onChange={(e) => setCalB((p) => ({ ...p, lat: e.target.value === "" ? null : Number(e.target.value) }))}
               style={{ flex: 1, padding: 10, borderRadius: 10 }}
             />
             <input
               placeholder="Cal B lon"
               value={calB.lon ?? ""}
-              onChange={(e) =>
-                setCalB((p) => ({ ...p, lon: e.target.value === "" ? null : Number(e.target.value) }))
-              }
+              onChange={(e) => setCalB((p) => ({ ...p, lon: e.target.value === "" ? null : Number(e.target.value) }))}
               style={{ flex: 1, padding: 10, borderRadius: 10 }}
             />
           </div>
@@ -267,24 +255,6 @@ export default function ScreenshotMode() {
           >
             Set Source (click image)
           </button>
-
-          <div
-            style={{
-              marginTop: 10,
-              fontFamily: "ui-monospace, Menlo, monospace",
-              fontSize: 12,
-              whiteSpace: "pre-wrap",
-              background: "#0b1220",
-              color: "white",
-              padding: 10,
-              borderRadius: 10,
-            }}
-          >
-            {mapping ? "calibration: OK\n" : "calibration: incomplete\n"}
-            {wind
-              ? `wind_from_deg: ${wind.wind_dir_from_deg}\nwind_speed_mps: ${wind.wind_speed_mps}\n`
-              : "wind: (not fetched yet)\n"}
-          </div>
         </div>
 
         <label style={{ display: "block", marginTop: 12 }}>Cone length</label>
@@ -300,10 +270,7 @@ export default function ScreenshotMode() {
 
         <label style={{ display: "block", marginTop: 12 }}>Half-angle</label>
         <div style={{ display: "flex", gap: 8 }}>
-          <button
-            onClick={() => setHalfAngleDeg("auto")}
-            style={{ flex: 1, padding: 10, borderRadius: 10 }}
-          >
+          <button onClick={() => setHalfAngleDeg("auto")} style={{ flex: 1, padding: 10, borderRadius: 10 }}>
             Auto
           </button>
           <input
@@ -316,17 +283,6 @@ export default function ScreenshotMode() {
             disabled={halfAngleDeg === "auto" || !imgEl}
           />
         </div>
-
-        <button
-          onClick={() => {
-            const canv = wrapRef.current?.querySelector("canvas");
-            if (canv) downloadCanvasPNG(canv as HTMLCanvasElement, "scent_cone_screenshot.png");
-          }}
-          style={{ width: "100%", marginTop: 12, padding: 12, borderRadius: 12 }}
-          disabled={!imgEl}
-        >
-          Export PNG
-        </button>
       </div>
     </div>
   );
