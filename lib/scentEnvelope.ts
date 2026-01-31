@@ -61,6 +61,9 @@ function deg2rad(d: number) {
 function rad2deg(r: number) {
   return (r * 180) / Math.PI;
 }
+export function addMinutesIso(baseIso: string, mins: number) {
+  return new Date(Date.parse(baseIso) + mins * 60000).toISOString();
+}
 
 /**
  * Destination point given start lat/lon, bearing degrees (0=N), distance meters.

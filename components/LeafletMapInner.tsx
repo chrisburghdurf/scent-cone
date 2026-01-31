@@ -20,6 +20,17 @@ type EnvelopePolygons = {
   residual: LatLon[];
 };
 
+type EnvelopeBand = {
+  minutes: number;
+  polygons: EnvelopePolygons;
+  confidence_score: number;
+  confidence_band: "High" | "Moderate" | "Low";
+};
+
+type Trap = { id: string; lat: number; lon: number; label: string };
+
+type LKP = { id: string; lat: number; lon: number; timeISO: string; label?: string };
+
 function MapReporter({
   onReady,
   onViewChanged,
@@ -35,7 +46,6 @@ function MapReporter({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Recompute overlays after pan/zoom ends (prevents mobile “drift” during kinetic move)
   useMapEvents({
     zoomend() {
       onViewChanged(map);
@@ -51,7 +61,11 @@ function MapReporter({
   return null;
 }
 
-function ClickHandler({ onClick }: { onClick: (lat: number, lon: number) => void }) {
+function ClickHandler({
+  onClick,
+}: {
+  onClick: (lat: number, lon: number) => void;
+}) {
   useMapEvents({
     click(e) {
       onClick(e.latlng.lat, e.latlng.lng);
@@ -84,7 +98,6 @@ function UserLocationLayer({
       setPos(null);
       return;
     }
-
     if (!navigator.geolocation) return;
 
     watchIdRef.current = navigator.geolocation.watchPosition(
@@ -132,7 +145,7 @@ function UserLocationLayer({
   return (
     <>
       <CircleMarker center={[pos.lat, pos.lon]} radius={8} pathOptions={{ color: "#2563eb" }}>
-        <Tooltip direction="top" offset={[0, -10]} opacity={0.9}>
+        <Tooltip direction="top" offset={[0, -10]} opacity={0.95}>
           My location
         </Tooltip>
       </CircleMarker>
@@ -158,9 +171,16 @@ export default function LeafletMapInner({
   locateToken,
   onUserLocation,
 
+  // display layers
   showEnvelope,
-  envelopePolygons,
+  envelopeNow,
+  envelopeBands,
+
+  // points/layers
   startPoints,
+  traps,
+  lkps,
+  activeLkpId,
 }: {
   center: LatLngExpression;
   zoom: number;
@@ -175,8 +195,14 @@ export default function LeafletMapInner({
   onUserLocation?: (lat: number, lon: number) => void;
 
   showEnvelope: boolean;
-  envelopePolygons?: EnvelopePolygons | null;
+  envelopeNow?: EnvelopePolygons | null;
+  envelopeBands?: EnvelopeBand[] | null;
+
   startPoints?: Array<{ label: string; point: LatLon }> | null;
+  traps?: Trap[] | null;
+
+  lkps?: LKP[] | null;
+  activeLkpId?: string | null;
 }) {
   return (
     <MapContainer center={center} zoom={zoom} style={{ width: "100%", height: "100%" }}>
@@ -189,35 +215,82 @@ export default function LeafletMapInner({
       <MapReporter onReady={onMapReady} onViewChanged={onViewChanged} />
       <ClickHandler onClick={onMapClick} />
 
-      {/* Envelope polygons */}
-      {showEnvelope && envelopePolygons?.residual?.length ? (
+      {/* TIME BANDS: draw oldest first, newest last */}
+      {showEnvelope && envelopeBands?.length
+        ? envelopeBands
+            .slice()
+            .sort((a, b) => a.minutes - b.minutes)
+            .map((band, idx, arr) => {
+              const n = arr.length;
+              const t = n <= 1 ? 1 : idx / (n - 1); // 0..1
+              const fillBase = 0.16;
+              const fade = 1 - t; // older gets lower opacity
+              const opCore = fillBase * (0.35 + 0.65 * fade);
+              const opFringe = opCore * 0.85;
+              const opResid = opCore * 0.70;
+
+              return (
+                <React.Fragment key={`band-${band.minutes}`}>
+                  <Polygon
+                    positions={toLatLngs(band.polygons.residual)}
+                    pathOptions={{ color: "#f59e0b", weight: 1, fillOpacity: opResid }}
+                  />
+                  <Polygon
+                    positions={toLatLngs(band.polygons.fringe)}
+                    pathOptions={{ color: "#fb7185", weight: 1, fillOpacity: opFringe }}
+                  />
+                  <Polygon
+                    positions={toLatLngs(band.polygons.core)}
+                    pathOptions={{ color: "#ef4444", weight: 2, fillOpacity: opCore }}
+                  />
+                </React.Fragment>
+              );
+            })
+        : null}
+
+      {/* Single “now” envelope fallback */}
+      {showEnvelope && !envelopeBands?.length && envelopeNow?.residual?.length ? (
         <>
-          <Polygon
-            positions={toLatLngs(envelopePolygons.residual)}
-            pathOptions={{ color: "#f59e0b", weight: 2, fillOpacity: 0.10 }}
-          />
-          <Polygon
-            positions={toLatLngs(envelopePolygons.fringe)}
-            pathOptions={{ color: "#fb7185", weight: 2, fillOpacity: 0.12 }}
-          />
-          <Polygon
-            positions={toLatLngs(envelopePolygons.core)}
-            pathOptions={{ color: "#ef4444", weight: 3, fillOpacity: 0.14 }}
-          />
+          <Polygon positions={toLatLngs(envelopeNow.residual)} pathOptions={{ color: "#f59e0b", weight: 2, fillOpacity: 0.10 }} />
+          <Polygon positions={toLatLngs(envelopeNow.fringe)} pathOptions={{ color: "#fb7185", weight: 2, fillOpacity: 0.12 }} />
+          <Polygon positions={toLatLngs(envelopeNow.core)} pathOptions={{ color: "#ef4444", weight: 3, fillOpacity: 0.14 }} />
         </>
       ) : null}
 
       {/* Recommended start points */}
       {showEnvelope && startPoints?.length
         ? startPoints.map((sp, idx) => (
-            <CircleMarker
-              key={`${sp.label}-${idx}`}
-              center={[sp.point.lat, sp.point.lon]}
-              radius={6}
-              pathOptions={{ color: "#111827" }}
-            >
+            <CircleMarker key={`${sp.label}-${idx}`} center={[sp.point.lat, sp.point.lon]} radius={6} pathOptions={{ color: "#111827" }}>
               <Tooltip direction="top" offset={[0, -10]} opacity={0.95}>
                 {sp.label}
+              </Tooltip>
+            </CircleMarker>
+          ))
+        : null}
+
+      {/* Terrain traps */}
+      {traps?.length
+        ? traps.map((t) => (
+            <CircleMarker key={t.id} center={[t.lat, t.lon]} radius={7} pathOptions={{ color: "#0f766e" }}>
+              <Tooltip direction="top" offset={[0, -10]} opacity={0.95}>
+                {t.label}
+              </Tooltip>
+            </CircleMarker>
+          ))
+        : null}
+
+      {/* Multi-LKP markers */}
+      {lkps?.length
+        ? lkps.map((k) => (
+            <CircleMarker
+              key={k.id}
+              center={[k.lat, k.lon]}
+              radius={k.id === activeLkpId ? 8 : 6}
+              pathOptions={{ color: k.id === activeLkpId ? "#111827" : "#6b7280" }}
+            >
+              <Tooltip direction="top" offset={[0, -10]} opacity={0.95}>
+                {k.label ? `${k.label}` : "LKP"}{" "}
+                {k.id === activeLkpId ? "(active)" : ""}
               </Tooltip>
             </CircleMarker>
           ))
@@ -232,7 +305,3 @@ export default function LeafletMapInner({
     </MapContainer>
   );
 }
-
-
-
-
