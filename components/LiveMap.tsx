@@ -25,8 +25,6 @@ function isoNow() {
 function uid(prefix = "id") {
   return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
 }
-
-// Convert ISO -> datetime-local value (local time)
 function isoToLocalInput(iso: string) {
   const d = new Date(iso);
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -37,7 +35,6 @@ function isoToLocalInput(iso: string) {
   const mi = pad(d.getMinutes());
   return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
 }
-// Convert datetime-local string -> ISO
 function localInputToIso(v: string) {
   const d = new Date(v);
   return d.toISOString();
@@ -50,26 +47,24 @@ export default function LiveMap() {
   // ===== App Mode =====
   const [mode, setMode] = useState<"live" | "scenario">("live");
 
-  // ===== LIVE MODE STATE (all-4 features) =====
+  // ===== LIVE MODE STATE =====
   const [lkps, setLkps] = useState<LKP[]>([]);
   const [activeLkpId, setActiveLkpId] = useState<string | null>(null);
   const activeLkp = useMemo(() => lkps.find((k) => k.id === activeLkpId) ?? null, [lkps, activeLkpId]);
-
   const sourceLL_live = activeLkp ? { lat: activeLkp.lat, lon: activeLkp.lon } : null;
 
   // ===== SCENARIO MODE STATE =====
   const [scenarioLL, setScenarioLL] = useState<{ lat: number; lon: number } | null>(null);
-  const [scenarioTimeISO, setScenarioTimeISO] = useState<string>(isoNow());  // “as-of” time
-  const [scenarioElapsedMin, setScenarioElapsedMin] = useState<number>(60);  // show travel after LKP
+  const [scenarioTimeISO, setScenarioTimeISO] = useState<string>(isoNow());
+  const [scenarioElapsedMin, setScenarioElapsedMin] = useState<number>(60);
   const [scenarioLabel, setScenarioLabel] = useState<string>("Scenario");
 
-  // ===== Shared pixel point for cone (derived from selected LL) =====
+  // ===== Shared pixel point for cone =====
   const [srcPoint, setSrcPoint] = useState<{ x: number; y: number } | null>(null);
 
   // ===== Wind =====
   const [wind, setWind] = useState<WindData | null>(null);
 
-  // Wind modes: live uses current/hourly/manual; scenario uses historical/manual
   const [windMode, setWindMode] = useState<"current" | "hourly" | "historical" | "manual">("current");
   const [manualSpeedMph, setManualSpeedMph] = useState<number>(11);
   const [manualFromDeg, setManualFromDeg] = useState<number>(315);
@@ -81,7 +76,7 @@ export default function LiveMap() {
   // ===== Source locking (live) =====
   const [lockSource, setLockSource] = useState(true);
 
-  // ===== Envelope toggles + environment =====
+  // ===== Envelope + environment =====
   const [showEnvelope, setShowEnvelope] = useState(true);
   const [showTimeBands, setShowTimeBands] = useState(true);
   const [bandSet] = useState<number[]>([15, 30, 60, 120]);
@@ -104,9 +99,15 @@ export default function LiveMap() {
   const [icsNotes, setIcsNotes] = useState<string>("");
 
   // ===== User location =====
-  const [showUserLocation, setShowUserLocation] = useState(true);
+  // KEY CHANGE #1: default OFF
+  const [showUserLocation, setShowUserLocation] = useState(false);
+
+  // KEY CHANGE #2: follow is optional; default OFF and never forced
   const [followUser, setFollowUser] = useState(false);
+
+  // “Locate” token triggers a one-time browser geolocate request in LeafletMapInner
   const [locateToken, setLocateToken] = useState(0);
+
   const [userLoc, setUserLoc] = useState<{ lat: number; lon: number } | null>(null);
 
   // ===== Map refs =====
@@ -136,16 +137,6 @@ export default function LiveMap() {
     return () => ro.disconnect();
   }, []);
 
-  // force Leaflet redraw on layout changes
-  useEffect(() => {
-    if (!mapRef.current) return;
-    setTimeout(() => {
-      mapRef.current?.invalidateSize();
-      recomputeSrcPoint(mapRef.current, selectedLL);
-    }, 150);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMobile]);
-
   // ===== Time “now” ticks (live mode only) =====
   const [nowISO, setNowISO] = useState<string>(isoNow());
   useEffect(() => {
@@ -154,7 +145,7 @@ export default function LiveMap() {
     return () => clearInterval(id);
   }, [mode]);
 
-  // ===== Selected location depends on mode =====
+  // Selected location depends on mode
   const selectedLL = mode === "live" ? sourceLL_live : scenarioLL;
 
   function recomputeSrcPoint(map: LeafletMap | null, ll: { lat: number; lon: number } | null) {
@@ -183,7 +174,7 @@ export default function LiveMap() {
     setWind(js);
   }
 
-  // effective wind
+  // Effective wind: manual override or fetched wind
   const effectiveWind: WindData | null =
     windMode === "manual"
       ? ({
@@ -196,27 +187,23 @@ export default function LiveMap() {
         } as any)
       : wind;
 
-  // ===== Scenario “LKPs” are virtual (single point) =====
   const virtualScenarioLkp = useMemo(() => {
     if (!scenarioLL) return null;
     return {
       id: "scenario",
       lat: scenarioLL.lat,
       lon: scenarioLL.lon,
-      timeISO: scenarioTimeISO, // base LKP time in scenario
+      timeISO: scenarioTimeISO,
       label: scenarioLabel || "Scenario",
     } as LKP;
   }, [scenarioLL, scenarioTimeISO, scenarioLabel]);
 
-  // ===== Envelope computation =====
   const activeForEnvelope = mode === "live" ? activeLkp : virtualScenarioLkp;
 
   const envelopeNow = useMemo(() => {
     if (!showEnvelope || !activeForEnvelope || !effectiveWind) return null;
 
     const windSpeedMph = effectiveWind.wind_speed_mps * 2.236936;
-
-    // In scenario mode, “now” is scenarioTime + elapsed minutes
     const nowForModel =
       mode === "scenario"
         ? addMinutesIso(activeForEnvelope.timeISO, scenarioElapsedMin)
@@ -229,7 +216,6 @@ export default function LiveMap() {
       now_time_iso: nowForModel,
       wind_from_deg: effectiveWind.wind_dir_from_deg,
       wind_speed_mph: windSpeedMph,
-
       temperature_f: tempF,
       rel_humidity_pct: rh,
       cloud,
@@ -256,9 +242,9 @@ export default function LiveMap() {
 
   const envelopeBands = useMemo(() => {
     if (!showEnvelope || !showTimeBands || !activeForEnvelope || !effectiveWind) return null;
+
     const windSpeedMph = effectiveWind.wind_speed_mps * 2.236936;
 
-    // Bands are always from the LKP base time
     return bandSet
       .slice()
       .sort((a, b) => a - b)
@@ -270,7 +256,6 @@ export default function LiveMap() {
           now_time_iso: addMinutesIso(activeForEnvelope.timeISO, mins),
           wind_from_deg: effectiveWind.wind_dir_from_deg,
           wind_speed_mph: windSpeedMph,
-
           temperature_f: tempF,
           rel_humidity_pct: rh,
           cloud,
@@ -302,7 +287,6 @@ export default function LiveMap() {
     stability,
   ]);
 
-  // elapsed mins display
   const elapsedMin = useMemo(() => {
     if (!activeForEnvelope) return null;
     const t0 = Date.parse(activeForEnvelope.timeISO);
@@ -314,7 +298,7 @@ export default function LiveMap() {
     return Math.max(0, Math.round((t1 - t0) / 60000));
   }, [activeForEnvelope, mode, scenarioElapsedMin, nowISO]);
 
-  // ===== Offline banner =====
+  // Offline banner
   const [online, setOnline] = useState(true);
   useEffect(() => {
     const upd = () => setOnline(navigator.onLine);
@@ -327,7 +311,7 @@ export default function LiveMap() {
     };
   }, []);
 
-  // ===== Click handling =====
+  // Click handling
   async function handleMapClick(lat: number, lon: number) {
     if (mapMode === "addTrap") {
       const t: Trap = { id: uid("trap"), lat, lon, label: newTrapLabel || "Terrain trap" };
@@ -335,13 +319,10 @@ export default function LiveMap() {
       return;
     }
 
-    // SetSource mode
     if (mode === "scenario") {
       setScenarioLL({ lat, lon });
-      setScenarioTimeISO(isoNow());
       recomputeSrcPoint(mapRef.current, { lat, lon });
 
-      // In scenario, auto wind uses historical at scenarioTimeISO
       if (windMode === "historical") {
         try {
           await fetchWind(lat, lon, "historical", scenarioTimeISO);
@@ -382,7 +363,6 @@ export default function LiveMap() {
     }
   }
 
-  // ===== Start points from envelope =====
   const startPoints = envelopeNow ? envelopeNow.recommended_start_points : null;
 
   return (
@@ -450,7 +430,7 @@ export default function LiveMap() {
       <div style={{ padding: 12, border: "1px solid #e5e7eb", borderRadius: 12 }}>
         <h3 style={{ marginTop: 0 }}>Live Map</h3>
 
-        {/* Mode toggle */}
+        {/* Mode */}
         <label style={{ display: "block", marginTop: 8 }}>Mode</label>
         <select
           value={mode}
@@ -458,7 +438,6 @@ export default function LiveMap() {
             const v = e.target.value as "live" | "scenario";
             setMode(v);
 
-            // Adjust wind mode defaults
             if (v === "scenario") {
               setWindMode((prev) => (prev === "manual" ? "manual" : "historical"));
             } else {
@@ -474,9 +453,59 @@ export default function LiveMap() {
           <option value="scenario">Scenario / Historical</option>
         </select>
 
+        {/* USER LOCATION (fixed behavior) */}
+        <div style={{ marginTop: 12, padding: 10, borderRadius: 10, background: "#f9fafb" }}>
+          <b>Live Location</b>
+          <div style={{ marginTop: 8 }}>
+            <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input
+                type="checkbox"
+                checked={showUserLocation}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setShowUserLocation(on);
+
+                  // When turning ON, request location once to draw marker (NO recenter)
+                  if (on) setLocateToken((n) => n + 1);
+
+                  // If turning OFF, also turn off follow
+                  if (!on) setFollowUser(false);
+                }}
+              />
+              Show my location on the map
+            </label>
+          </div>
+
+          <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
+            <button
+              onClick={() => {
+                if (!showUserLocation) setShowUserLocation(true);
+                setLocateToken((n) => n + 1); // one-time locate request
+              }}
+              style={{ padding: 10, borderRadius: 10 }}
+            >
+              Center on Me (one-time)
+            </button>
+
+            <label style={{ display: "flex", gap: 8, alignItems: "center", opacity: showUserLocation ? 1 : 0.5 }}>
+              <input
+                type="checkbox"
+                checked={followUser}
+                disabled={!showUserLocation}
+                onChange={(e) => setFollowUser(e.target.checked)}
+              />
+              Follow me (recenters after I stop panning)
+            </label>
+
+            <div style={{ fontSize: 12, color: "#6b7280" }}>
+              Showing location does <b>not</b> lock the map. You can pan/zoom freely.
+            </div>
+          </div>
+        </div>
+
+        {/* Scenario controls */}
         {mode === "scenario" ? (
           <>
-            {/* Scenario controls */}
             <label style={{ display: "block", marginTop: 12 }}>Scenario label</label>
             <input
               value={scenarioLabel}
@@ -493,7 +522,6 @@ export default function LiveMap() {
                 const iso = localInputToIso(e.target.value);
                 setScenarioTimeISO(iso);
 
-                // If we have a location and in historical mode, refresh wind for that timestamp
                 if (scenarioLL && windMode === "historical") {
                   fetchWind(scenarioLL.lat, scenarioLL.lon, "historical", iso).catch(() => {});
                 }
@@ -513,12 +541,11 @@ export default function LiveMap() {
             <div style={{ fontSize: 12, color: "#6b7280" }}>{scenarioElapsedMin} minutes</div>
 
             <div style={{ marginTop: 10, fontSize: 12, color: "#6b7280" }}>
-              Click map to set scenario location. Wind (Auto Historical) pulls nearest hourly wind for that timestamp.
+              Click map to set scenario location.
             </div>
           </>
         ) : (
           <>
-            {/* Live LKP controls */}
             <label style={{ display: "block", marginTop: 12 }}>LKPs (Live)</label>
             <div style={{ display: "grid", gap: 8 }}>
               <select
@@ -599,12 +626,10 @@ export default function LiveMap() {
 
             if (!selectedLL) return;
 
-            // live mode fetch
             if (mode === "live" && (v === "current" || v === "hourly")) {
               const apiMode = v === "hourly" ? "hourly" : "current";
               fetchWind(selectedLL.lat, selectedLL.lon, apiMode).catch(() => {});
             }
-            // scenario mode fetch
             if (mode === "scenario" && v === "historical") {
               fetchWind(selectedLL.lat, selectedLL.lon, "historical", scenarioTimeISO).catch(() => {});
             }
@@ -681,7 +706,7 @@ export default function LiveMap() {
           )}
         </div>
 
-        {/* Cone visual controls */}
+        {/* Cone controls */}
         <label style={{ display: "block", marginTop: 12 }}>Cone length</label>
         <input type="range" min={150} max={1200} value={lengthPx} onChange={(e) => setLengthPx(Number(e.target.value))} style={{ width: "100%" }} />
 
@@ -698,6 +723,7 @@ export default function LiveMap() {
           {selectedLL ? `lat: ${selectedLL.lat}\nlon: ${selectedLL.lon}\nelapsed: ${elapsedMin ?? "n/a"} min\n` : "Set a point to begin\n"}
           {effectiveWind ? `wind_from_deg: ${effectiveWind.wind_dir_from_deg}\nwind_speed_mps: ${effectiveWind.wind_speed_mps}\n` : "wind: (not set)\n"}
           {envelopeNow ? `confidence: ${envelopeNow.confidence_score} (${envelopeNow.confidence_band})\nreset: ${envelopeNow.reset_recommendation_minutes} min\n` : ""}
+          {userLoc ? `user_loc: ${userLoc.lat.toFixed(5)}, ${userLoc.lon.toFixed(5)}\n` : ""}
         </div>
 
         {/* ICS Notes + export */}
@@ -737,7 +763,7 @@ export default function LiveMap() {
         </button>
 
         <div style={{ marginTop: 10, fontSize: 12, color: "#6b7280" }}>
-          <b>Disclaimer:</b> Scenario mode uses nearest available historical hourly wind and is decision support only.
+          <b>Disclaimer:</b> Decision support only. Location display is optional and does not restrict panning.
         </div>
       </div>
     </div>
