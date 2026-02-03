@@ -1,187 +1,39 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   MapContainer,
   TileLayer,
+  CircleMarker,
+  Marker,
+  Popup,
   useMap,
   useMapEvents,
-  CircleMarker,
   Polygon,
-  Tooltip,
 } from "react-leaflet";
-import type { LatLngExpression } from "leaflet";
-import type { Map as LeafletMap } from "leaflet";
-import "leaflet/dist/leaflet.css";
+import L from "leaflet";
+import type { LatLngExpression, Map as LeafletMap } from "leaflet";
 
+type Trap = { id: string; lat: number; lon: number; label: string };
+type LKP = { id: string; lat: number; lon: number; timeISO: string; label?: string };
+
+// ✅ Match your lib/scentEnvelope.ts output shape
 type LatLon = { lat: number; lon: number };
 
-type EnvelopePolygons = {
+type EnvelopePolys = {
   core: LatLon[];
   fringe: LatLon[];
   residual: LatLon[];
 };
 
-type EnvelopeBand = {
+type Band = {
   minutes: number;
-  polygons: EnvelopePolygons;
+  polygons: EnvelopePolys;
   confidence_score: number;
-  confidence_band: "High" | "Moderate" | "Low";
+  confidence_band: string;
 };
 
-type Trap = { id: string; lat: number; lon: number; label: string };
+type StartPoint = { label: string; point: LatLon };
 
-type LKP = { id: string; lat: number; lon: number; timeISO: string; label?: string };
-
-function MapReporter({
-  onReady,
-  onViewChanged,
-}: {
-  onReady: (map: LeafletMap) => void;
-  onViewChanged: (map: LeafletMap) => void;
-}) {
-  const map = useMap();
-
-  useEffect(() => {
-    onReady(map);
-    onViewChanged(map);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useMapEvents({
-    zoomend() {
-      onViewChanged(map);
-    },
-    moveend() {
-      onViewChanged(map);
-    },
-    resize() {
-      onViewChanged(map);
-    },
-  });
-
-  return null;
-}
-
-function ClickHandler({
-  onClick,
-}: {
-  onClick: (lat: number, lon: number) => void;
-}) {
-  useMapEvents({
-    click(e) {
-      onClick(e.latlng.lat, e.latlng.lng);
-    },
-  });
-  return null;
-}
-
-function UserLocationLayer({
-  enabled,
-  follow,
-  locateToken,
-  onLocation,
-}: {
-  enabled: boolean;
-  follow: boolean;
-  locateToken: number;
-  onLocation?: (lat: number, lon: number) => void;
-}) {
-  const map = useMap();
-  const watchIdRef = useRef<number | null>(null);
-  const [pos, setPos] = useState<{ lat: number; lon: number } | null>(null);
-
-  useEffect(() => {
-    if (!enabled) {
-      if (watchIdRef.current != null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-        watchIdRef.current = null;
-      }
-      setPos(null);
-      return;
-    }
-    if (!navigator.geolocation) return;
-
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      (p) => {
-        const lat = p.coords.latitude;
-        const lon = p.coords.longitude;
-        setPos({ lat, lon });
-        onLocation?.(lat, lon);
-
-        if (follow) {
-          map.setView([lat, lon], Math.max(map.getZoom(), 15), { animate: true });
-        }
-      },
-      () => {},
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
-    );
-
-    return () => {
-      if (watchIdRef.current != null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-        watchIdRef.current = null;
-      }
-    };
-  }, [enabled, follow, map, onLocation]);
-
-  useEffect(() => {
-    if (!enabled) return;
-    if (!navigator.geolocation) return;
-
-    navigator.geolocation.getCurrentPosition(
-      (p) => {
-        const lat = p.coords.latitude;
-        const lon = p.coords.longitude;
-        setPos({ lat, lon });
-        onLocation?.(lat, lon);
-        map.setView([lat, lon], Math.max(map.getZoom(), 15), { animate: true });
-      },
-      () => {},
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
-    );
-  }, [locateToken, enabled, map, onLocation]);
-
-  if (!enabled || !pos) return null;
-
-  return (
-    <>
-      <CircleMarker center={[pos.lat, pos.lon]} radius={8} pathOptions={{ color: "#2563eb" }}>
-        <Tooltip direction="top" offset={[0, -10]} opacity={0.95}>
-          My location
-        </Tooltip>
-      </CircleMarker>
-      <CircleMarker center={[pos.lat, pos.lon]} radius={18} pathOptions={{ color: "#93c5fd" }} />
-    </>
-  );
-}
-
-function toLatLngs(poly: LatLon[]) {
-  return poly.map((p) => [p.lat, p.lon] as [number, number]);
-}
-
-export default function LeafletMapInner({
-  center,
-  zoom,
-
-  onMapClick,
-  onMapReady,
-  onViewChanged,
-
-  showUserLocation,
-  followUser,
-  locateToken,
-  onUserLocation,
-
-  // display layers
-  showEnvelope,
-  envelopeNow,
-  envelopeBands,
-
-  // points/layers
-  startPoints,
-  traps,
-  lkps,
-  activeLkpId,
-}: {
+type Props = {
   center: LatLngExpression;
   zoom: number;
 
@@ -189,119 +41,220 @@ export default function LeafletMapInner({
   onMapReady: (map: LeafletMap) => void;
   onViewChanged: (map: LeafletMap) => void;
 
+  // User location
   showUserLocation: boolean;
   followUser: boolean;
   locateToken: number;
   onUserLocation?: (lat: number, lon: number) => void;
 
+  // Envelope + guidance
   showEnvelope: boolean;
-  envelopeNow?: EnvelopePolygons | null;
-  envelopeBands?: EnvelopeBand[] | null;
+  envelopeNow: EnvelopePolys | null;
+  envelopeBands: Band[] | null;
+  startPoints?: StartPoint[] | null;
 
-  startPoints?: Array<{ label: string; point: LatLon }> | null;
-  traps?: Trap[] | null;
+  // Markers
+  traps: Trap[];
+  lkps: LKP[];
+  activeLkpId: string | null;
+};
 
-  lkps?: LKP[] | null;
-  activeLkpId?: string | null;
+function MapEvents({
+  onMapClick,
+  onViewChanged,
+}: {
+  onMapClick: (lat: number, lon: number) => void;
+  onViewChanged: (map: LeafletMap) => void;
 }) {
+  const map = useMapEvents({
+    click(e) {
+      onMapClick(e.latlng.lat, e.latlng.lng);
+    },
+    moveend() {
+      onViewChanged(map);
+    },
+    zoomend() {
+      onViewChanged(map);
+    },
+  });
+
+  return null;
+}
+
+function UserLocator({
+  showUserLocation,
+  followUser,
+  locateToken,
+  onUserLocation,
+}: {
+  showUserLocation: boolean;
+  followUser: boolean;
+  locateToken: number;
+  onUserLocation?: (lat: number, lon: number) => void;
+}) {
+  const map = useMap();
+  const [pos, setPos] = useState<LatLon | null>(null);
+
+  // Track whether user is actively interacting (dragging/zooming)
+  const isInteractingRef = useRef(false);
+
+  useEffect(() => {
+    const onDragStart = () => (isInteractingRef.current = true);
+    const onDragEnd = () => (isInteractingRef.current = false);
+
+    map.on("dragstart", onDragStart);
+    map.on("dragend", onDragEnd);
+    map.on("zoomstart", onDragStart);
+    map.on("zoomend", onDragEnd);
+
+    return () => {
+      map.off("dragstart", onDragStart);
+      map.off("dragend", onDragEnd);
+      map.off("zoomstart", onDragStart);
+      map.off("zoomend", onDragEnd);
+    };
+  }, [map]);
+
+  useEffect(() => {
+    if (!showUserLocation) return;
+
+    map.locate({
+      setView: false, // ✅ never force centering
+      watch: false,
+      enableHighAccuracy: true,
+      maximumAge: 30_000,
+      timeout: 10_000,
+    });
+
+    const onFound = (e: any) => {
+      const lat = e?.latlng?.lat;
+      const lon = e?.latlng?.lng;
+      if (typeof lat !== "number" || typeof lon !== "number") return;
+
+      setPos({ lat, lon });
+      onUserLocation?.(lat, lon);
+
+      // ✅ only recenters if followUser is ON and user not actively panning
+      if (followUser && !isInteractingRef.current) {
+        map.setView([lat, lon], map.getZoom(), { animate: true });
+      }
+    };
+
+    const onError = () => {
+      // ignore
+    };
+
+    map.on("locationfound", onFound);
+    map.on("locationerror", onError);
+
+    return () => {
+      map.off("locationfound", onFound);
+      map.off("locationerror", onError);
+    };
+  }, [map, showUserLocation, followUser, locateToken, onUserLocation]);
+
+  if (!showUserLocation || !pos) return null;
+
   return (
-    <MapContainer center={center} zoom={zoom} style={{ width: "100%", height: "100%" }}>
-      <TileLayer
-        attribution="&copy; OpenStreetMap"
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        crossOrigin="anonymous"
+    <CircleMarker center={[pos.lat, pos.lon]} radius={8} pathOptions={{}}>
+      <Popup>Your location</Popup>
+    </CircleMarker>
+  );
+}
+
+function polyToTuples(poly: LatLon[]) {
+  return poly.map((p) => [p.lat, p.lon] as [number, number]);
+}
+
+export default function LeafletMapInner(props: Props) {
+  const tileUrl = "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
+  const attrib =
+    '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
+
+  const activeId = props.activeLkpId;
+
+  const defaultIcon = useMemo(() => {
+    return L.icon({
+      iconUrl:
+        "data:image/svg+xml;charset=UTF-8," +
+        encodeURIComponent(
+          `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26"><circle cx="13" cy="13" r="10" fill="#111827" stroke="white" stroke-width="2"/></svg>`
+        ),
+      iconSize: [26, 26],
+      iconAnchor: [13, 13],
+    });
+  }, []);
+
+  // ✅ Use a ref to get the map instance (avoids whenReady typing mismatch)
+  const mapRef = useRef<LeafletMap | null>(null);
+
+  return (
+    <MapContainer
+      center={props.center}
+      zoom={props.zoom}
+      style={{ width: "100%", height: "100%" }}
+      ref={(instance) => {
+        // react-leaflet gives the Leaflet map instance here
+        if (instance && !mapRef.current) {
+          // @ts-ignore (ref type mismatch between versions; instance is Leaflet map)
+          mapRef.current = instance;
+          props.onMapReady(instance as unknown as LeafletMap);
+        }
+      }}
+    >
+      <TileLayer url={tileUrl} attribution={attrib} />
+
+      <MapEvents onMapClick={props.onMapClick} onViewChanged={props.onViewChanged} />
+
+      <UserLocator
+        showUserLocation={props.showUserLocation}
+        followUser={props.followUser}
+        locateToken={props.locateToken}
+        onUserLocation={props.onUserLocation}
       />
 
-      <MapReporter onReady={onMapReady} onViewChanged={onViewChanged} />
-      <ClickHandler onClick={onMapClick} />
+      {/* LKPs */}
+      {props.lkps.map((k) => (
+        <Marker key={k.id} position={[k.lat, k.lon]} icon={defaultIcon}>
+          <Popup>
+            <b>{k.label ?? "LKP"}</b>
+            <div style={{ fontSize: 12, opacity: 0.8 }}>{new Date(k.timeISO).toLocaleString()}</div>
+            {activeId === k.id && <div style={{ marginTop: 6 }}>(active)</div>}
+          </Popup>
+        </Marker>
+      ))}
 
-      {/* TIME BANDS: draw oldest first, newest last */}
-      {showEnvelope && envelopeBands?.length
-        ? envelopeBands
-            .slice()
-            .sort((a, b) => a.minutes - b.minutes)
-            .map((band, idx, arr) => {
-              const n = arr.length;
-              const t = n <= 1 ? 1 : idx / (n - 1); // 0..1
-              const fillBase = 0.16;
-              const fade = 1 - t; // older gets lower opacity
-              const opCore = fillBase * (0.35 + 0.65 * fade);
-              const opFringe = opCore * 0.85;
-              const opResid = opCore * 0.70;
+      {/* Traps */}
+      {props.traps.map((t) => (
+        <Marker key={t.id} position={[t.lat, t.lon]} icon={defaultIcon}>
+          <Popup>
+            <b>Trap:</b> {t.label}
+          </Popup>
+        </Marker>
+      ))}
 
-              return (
-                <React.Fragment key={`band-${band.minutes}`}>
-                  <Polygon
-                    positions={toLatLngs(band.polygons.residual)}
-                    pathOptions={{ color: "#f59e0b", weight: 1, fillOpacity: opResid }}
-                  />
-                  <Polygon
-                    positions={toLatLngs(band.polygons.fringe)}
-                    pathOptions={{ color: "#fb7185", weight: 1, fillOpacity: opFringe }}
-                  />
-                  <Polygon
-                    positions={toLatLngs(band.polygons.core)}
-                    pathOptions={{ color: "#ef4444", weight: 2, fillOpacity: opCore }}
-                  />
-                </React.Fragment>
-              );
-            })
-        : null}
-
-      {/* Single “now” envelope fallback */}
-      {showEnvelope && !envelopeBands?.length && envelopeNow?.residual?.length ? (
+      {/* Envelope (current) */}
+      {props.showEnvelope && props.envelopeNow && (
         <>
-          <Polygon positions={toLatLngs(envelopeNow.residual)} pathOptions={{ color: "#f59e0b", weight: 2, fillOpacity: 0.10 }} />
-          <Polygon positions={toLatLngs(envelopeNow.fringe)} pathOptions={{ color: "#fb7185", weight: 2, fillOpacity: 0.12 }} />
-          <Polygon positions={toLatLngs(envelopeNow.core)} pathOptions={{ color: "#ef4444", weight: 3, fillOpacity: 0.14 }} />
+          <Polygon positions={polyToTuples(props.envelopeNow.residual)} pathOptions={{}} />
+          <Polygon positions={polyToTuples(props.envelopeNow.fringe)} pathOptions={{}} />
+          <Polygon positions={polyToTuples(props.envelopeNow.core)} pathOptions={{}} />
         </>
-      ) : null}
+      )}
 
-      {/* Recommended start points */}
-      {showEnvelope && startPoints?.length
-        ? startPoints.map((sp, idx) => (
-            <CircleMarker key={`${sp.label}-${idx}`} center={[sp.point.lat, sp.point.lon]} radius={6} pathOptions={{ color: "#111827" }}>
-              <Tooltip direction="top" offset={[0, -10]} opacity={0.95}>
-                {sp.label}
-              </Tooltip>
-            </CircleMarker>
-          ))
-        : null}
+      {/* Envelope time bands (residual outlines for each band) */}
+      {props.showEnvelope &&
+        props.envelopeBands &&
+        props.envelopeBands.map((b) => (
+          <Polygon key={b.minutes} positions={polyToTuples(b.polygons.residual)} pathOptions={{}} />
+        ))}
 
-      {/* Terrain traps */}
-      {traps?.length
-        ? traps.map((t) => (
-            <CircleMarker key={t.id} center={[t.lat, t.lon]} radius={7} pathOptions={{ color: "#0f766e" }}>
-              <Tooltip direction="top" offset={[0, -10]} opacity={0.95}>
-                {t.label}
-              </Tooltip>
-            </CircleMarker>
-          ))
-        : null}
-
-      {/* Multi-LKP markers */}
-      {lkps?.length
-        ? lkps.map((k) => (
-            <CircleMarker
-              key={k.id}
-              center={[k.lat, k.lon]}
-              radius={k.id === activeLkpId ? 8 : 6}
-              pathOptions={{ color: k.id === activeLkpId ? "#111827" : "#6b7280" }}
-            >
-              <Tooltip direction="top" offset={[0, -10]} opacity={0.95}>
-                {k.label ? `${k.label}` : "LKP"}{" "}
-                {k.id === activeLkpId ? "(active)" : ""}
-              </Tooltip>
-            </CircleMarker>
-          ))
-        : null}
-
-      <UserLocationLayer
-        enabled={showUserLocation}
-        follow={followUser}
-        locateToken={locateToken}
-        onLocation={onUserLocation}
-      />
+      {/* Start points */}
+      {props.startPoints?.map((p, idx) => (
+        <Marker key={`${p.label}_${idx}`} position={[p.point.lat, p.point.lon]} icon={defaultIcon}>
+          <Popup>{p.label}</Popup>
+        </Marker>
+      ))}
     </MapContainer>
   );
 }
