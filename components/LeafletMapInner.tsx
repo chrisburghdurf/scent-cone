@@ -15,7 +15,6 @@ import type { LatLngExpression, Map as LeafletMap } from "leaflet";
 type Trap = { id: string; lat: number; lon: number; label: string };
 type LKP = { id: string; lat: number; lon: number; timeISO: string; label?: string };
 
-// ✅ Match your lib/scentEnvelope.ts output shape
 type LatLon = { lat: number; lon: number };
 
 type EnvelopePolys = {
@@ -45,6 +44,7 @@ type Props = {
   showUserLocation: boolean;
   followUser: boolean;
   locateToken: number;
+  centerOnMeToken: number; // ✅ NEW
   onUserLocation?: (lat: number, lon: number) => void;
 
   // Envelope + guidance
@@ -85,18 +85,20 @@ function UserLocator({
   showUserLocation,
   followUser,
   locateToken,
+  centerOnMeToken,
   onUserLocation,
 }: {
   showUserLocation: boolean;
   followUser: boolean;
   locateToken: number;
+  centerOnMeToken: number;
   onUserLocation?: (lat: number, lon: number) => void;
 }) {
   const map = useMap();
   const [pos, setPos] = useState<LatLon | null>(null);
 
-  // Track whether user is actively interacting (dragging/zooming)
   const isInteractingRef = useRef(false);
+  const lastCenterTokenRef = useRef<number>(centerOnMeToken);
 
   useEffect(() => {
     const onDragStart = () => (isInteractingRef.current = true);
@@ -118,8 +120,9 @@ function UserLocator({
   useEffect(() => {
     if (!showUserLocation) return;
 
+    // ✅ never auto-center from locate
     map.locate({
-      setView: false, // ✅ never force centering
+      setView: false,
       watch: false,
       enableHighAccuracy: true,
       maximumAge: 30_000,
@@ -134,15 +137,20 @@ function UserLocator({
       setPos({ lat, lon });
       onUserLocation?.(lat, lon);
 
-      // ✅ only recenters if followUser is ON and user not actively panning
+      // ✅ One-time center request
+      if (centerOnMeToken !== lastCenterTokenRef.current) {
+        lastCenterTokenRef.current = centerOnMeToken;
+        map.setView([lat, lon], map.getZoom(), { animate: true });
+        return;
+      }
+
+      // ✅ Follow only if enabled AND user isn't actively panning/zooming
       if (followUser && !isInteractingRef.current) {
         map.setView([lat, lon], map.getZoom(), { animate: true });
       }
     };
 
-    const onError = () => {
-      // ignore
-    };
+    const onError = () => {};
 
     map.on("locationfound", onFound);
     map.on("locationerror", onError);
@@ -151,7 +159,7 @@ function UserLocator({
       map.off("locationfound", onFound);
       map.off("locationerror", onError);
     };
-  }, [map, showUserLocation, followUser, locateToken, onUserLocation]);
+  }, [map, showUserLocation, followUser, locateToken, centerOnMeToken, onUserLocation]);
 
   if (!showUserLocation || !pos) return null;
 
@@ -185,21 +193,13 @@ export default function LeafletMapInner(props: Props) {
     });
   }, []);
 
-  // ✅ Use a ref to get the map instance (avoids whenReady typing mismatch)
-  const mapRef = useRef<LeafletMap | null>(null);
-
   return (
     <MapContainer
       center={props.center}
       zoom={props.zoom}
       style={{ width: "100%", height: "100%" }}
       ref={(instance) => {
-        // react-leaflet gives the Leaflet map instance here
-        if (instance && !mapRef.current) {
-          // @ts-ignore (ref type mismatch between versions; instance is Leaflet map)
-          mapRef.current = instance;
-          props.onMapReady(instance as unknown as LeafletMap);
-        }
+        if (instance) props.onMapReady(instance as unknown as LeafletMap);
       }}
     >
       <TileLayer url={tileUrl} attribution={attrib} />
@@ -210,10 +210,10 @@ export default function LeafletMapInner(props: Props) {
         showUserLocation={props.showUserLocation}
         followUser={props.followUser}
         locateToken={props.locateToken}
+        centerOnMeToken={props.centerOnMeToken}
         onUserLocation={props.onUserLocation}
       />
 
-      {/* LKPs */}
       {props.lkps.map((k) => (
         <Marker key={k.id} position={[k.lat, k.lon]} icon={defaultIcon}>
           <Popup>
@@ -224,7 +224,6 @@ export default function LeafletMapInner(props: Props) {
         </Marker>
       ))}
 
-      {/* Traps */}
       {props.traps.map((t) => (
         <Marker key={t.id} position={[t.lat, t.lon]} icon={defaultIcon}>
           <Popup>
@@ -233,7 +232,6 @@ export default function LeafletMapInner(props: Props) {
         </Marker>
       ))}
 
-      {/* Envelope (current) */}
       {props.showEnvelope && props.envelopeNow && (
         <>
           <Polygon positions={polyToTuples(props.envelopeNow.residual)} pathOptions={{}} />
@@ -242,14 +240,12 @@ export default function LeafletMapInner(props: Props) {
         </>
       )}
 
-      {/* Envelope time bands (residual outlines for each band) */}
       {props.showEnvelope &&
         props.envelopeBands &&
         props.envelopeBands.map((b) => (
           <Polygon key={b.minutes} positions={polyToTuples(b.polygons.residual)} pathOptions={{}} />
         ))}
 
-      {/* Start points */}
       {props.startPoints?.map((p, idx) => (
         <Marker key={`${p.label}_${idx}`} position={[p.point.lat, p.point.lon]} icon={defaultIcon}>
           <Popup>{p.label}</Popup>
