@@ -20,7 +20,8 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ```bash
 npm run build
-npx tsc --noEmit
+npm run build:webpack
+npm run typecheck
 npm run lint
 ```
 
