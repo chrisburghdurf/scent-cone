@@ -1,6 +1,9 @@
 export type WindData = {
   wind_speed_mps: number;
   wind_dir_from_deg: number; // meteorological FROM direction
+  // Backward-compatible aliases from earlier iterations.
+  from_deg?: number;
+  wind_from_deg?: number;
   time?: string | null;
   model?: string;
 };
@@ -51,4 +54,3 @@ export function computeCone(
 
   return { tip, left, right, centerRad: theta, downwindDeg };
 }
-
