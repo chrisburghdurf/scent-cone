@@ -16,10 +16,10 @@ export default function Home() {
   return (
     <>
       <Head>
-        <title>Scent Cone Overlay</title>
+        <title>TrailCast</title>
         <meta
           name="description"
-          content="Scent cone visualization and probability envelope for operational planning."
+          content="TrailCast visualization and probability envelope for operational planning."
         />
 
         {/* PWA */}
@@ -71,7 +71,7 @@ export default function Home() {
           >
             <img
               src="/app-logo.png"
-              alt="Scent Cone App Logo"
+              alt="TrailCast App Logo"
               style={{
                 width: 56,
                 height: 56,
@@ -79,7 +79,7 @@ export default function Home() {
               }}
             />
             <div style={{ flex: 1, minWidth: 220 }}>
-              <h1 style={{ margin: 0 }}>Scent Cone Overlay</h1>
+              <h1 style={{ margin: 0 }}>TrailCast</h1>
               <p style={{ margin: 0, color: "#6b7280", fontSize: 14 }}>
                 Decision-support for scent dispersion planning (not route prediction)
               </p>

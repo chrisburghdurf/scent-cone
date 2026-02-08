@@ -1,4 +1,4 @@
-const CACHE = "scent-cone-v1";
+const CACHE = "trailcast-v1";
 const ASSETS = ["/", "/manifest.json", "/favicon.ico"];
 
 self.addEventListener("install", (e) => {

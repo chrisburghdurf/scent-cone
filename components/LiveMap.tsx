@@ -513,7 +513,7 @@ export default function LiveMap() {
 
       {/* CONTROL PANEL */}
       <div style={{ padding: 12, border: "1px solid #e5e7eb", borderRadius: 12 }}>
-        <h3 style={{ marginTop: 0 }}>Scent Cone Planner</h3>
+        <h3 style={{ marginTop: 0 }}>TrailCast Planner</h3>
 
         {/* Mode switch */}
         <div style={{ display: "flex", gap: 8 }}>

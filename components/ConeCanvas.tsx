@@ -187,7 +187,7 @@ export async function downloadDataUrlPNG_ICS(
   // Header
   ctx.fillStyle = "white";
   ctx.font = "18px system-ui";
-  ctx.fillText("ICS Scent Cone Planning Export (Decision Support)", 16, baseH + 28);
+  ctx.fillText("ICS TrailCast Planning Export (Decision Support)", 16, baseH + 28);
 
   // Line 1
   ctx.font = "14px system-ui";
@@ -238,6 +238,5 @@ export async function downloadDataUrlPNG_ICS(
   a.href = out.toDataURL("image/png");
   a.click();
 }
-
 
 

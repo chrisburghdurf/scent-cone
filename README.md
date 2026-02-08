@@ -1,4 +1,4 @@
-# Scent Cone
+# TrailCast
 
 Operational planning UI for visualizing scent cone direction and time-aware envelope estimates.
 

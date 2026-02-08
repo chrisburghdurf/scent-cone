@@ -1,6 +1,6 @@
 {
-  "name": "Scent Cone Overlay",
-  "short_name": "Scent Cone",
+  "name": "TrailCast",
+  "short_name": "TrailCast",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0b1220",
