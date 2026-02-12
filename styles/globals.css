@@ -1,17 +1,344 @@
-html, body {
-  height: 100%;
+html,
+body,
+#__next {
+  margin: 0;
+  width: 100%;
+  min-height: 100%;
+  font-family: "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  background:
+    linear-gradient(rgba(7, 18, 35, 0.34), rgba(7, 18, 35, 0.42)),
+    url("/background.jpg") center center / cover no-repeat fixed;
+  color: #0f172a;
 }
 
-body {
-  margin: 0;
-  background-color: #0b1220; /* fallback */
-  background-image:
-    linear-gradient(rgba(10, 15, 25, 0.65), rgba(10, 15, 25, 0.65)),
-    url("/background.jpg");
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
+* {
+  box-sizing: border-box;
+}
 
-  /* If iOS Safari does anything weird, change to: background-attachment: scroll; */
-  background-attachment: fixed;
+.app-shell {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+  padding: 14px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.map-stage {
+  width: 100%;
+}
+
+.map-panel {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #c8d9ef;
+  height: 46vh;
+  min-height: 360px;
+  background: #f8fbff;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.1);
+}
+
+.map-topbar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  z-index: 900;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  pointer-events: auto;
+}
+
+.map-tabs {
+  pointer-events: auto;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(100px, 1fr));
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 6px;
+  max-width: min(760px, calc(100% - 148px));
+}
+
+.map-tabs button {
+  margin-top: 0;
+  background: #f8fbff;
+  border: 1px solid #bfd0e6;
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 0.82rem;
+}
+
+.map-tabs button.active,
+button.active {
+  background: #0f766e;
+  color: #ffffff;
+  border-color: #0f766e;
+}
+
+.menu-toggle {
+  pointer-events: auto;
+  width: auto;
+  margin-top: 0;
+  background: #0f766e;
+  color: #ffffff;
+  border-color: #0f766e;
+  padding: 8px 12px;
+  font-weight: 600;
+  box-shadow: 0 6px 14px rgba(15, 118, 110, 0.28);
+}
+
+.map-menu-toggle {
+  white-space: nowrap;
+}
+
+.map-quick-menu {
+  position: absolute;
+  top: 58px;
+  right: 10px;
+  z-index: 900;
+  width: min(310px, calc(100% - 20px));
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #dbe7f5;
+  border-radius: 10px;
+  padding: 10px;
+  box-shadow: 0 10px 28px rgba(2, 6, 23, 0.2);
+  backdrop-filter: blur(7px);
+}
+
+.map-quick-menu h3 {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+}
+
+.quick-menu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.quick-close-btn {
+  width: auto;
+  margin-top: 0;
+  padding: 6px 10px;
+  font-size: 0.78rem;
+}
+
+.mode-pill {
+  background: #ecfeff;
+  border: 1px solid #99f6e4;
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #134e4a;
+  margin-bottom: 8px;
+}
+
+.control-panel {
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid #c8d9ef;
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(8px);
+}
+
+h1,
+h2 {
+  margin: 0 0 6px;
+}
+
+h1 {
+  font-size: 1.35rem;
+  letter-spacing: 0.2px;
+}
+
+h2 {
+  font-size: 1rem;
+}
+
+.muted {
+  color: #475569;
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+}
+
+.status {
+  margin: 4px 0 8px;
+  font-weight: 600;
+  color: #0c4a6e;
+}
+
+.card {
+  border: 1px solid #d7e4f4;
+  border-radius: 12px;
+  padding: 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(248, 251, 255, 0.82));
+  margin-bottom: 6px;
+  box-shadow: 0 5px 14px rgba(30, 41, 59, 0.05);
+}
+
+label {
+  display: block;
+  font-size: 0.86rem;
+  margin-bottom: 10px;
+  color: #1e293b;
+  font-weight: 500;
+}
+
+.inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid #e1eaf6;
+  background: rgba(251, 253, 255, 0.9);
+  font-weight: 500;
+}
+
+input,
+select,
+textarea,
+button {
+  width: 100%;
+  margin-top: 4px;
+  padding: 9px 10px;
+  border: 1px solid #bfd0e6;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  background: #fff;
+}
+
+button {
+  background: #eef5ff;
+  color: #0f172a;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+button:hover {
+  background: #e2ecfb;
+}
+
+.mode-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  flex: 0 0 auto;
+  accent-color: #0f766e;
+}
+
+.inline > input[type="checkbox"],
+.inline > input[type="radio"] {
+  margin-right: 2px;
+}
+
+.hidden-input {
+  display: none;
+}
+
+.warning {
+  border: 1px solid #f59e0b;
+  background: #fff7ed;
+  color: #92400e;
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 0.85rem;
+  margin-top: 6px;
+}
+
+.note {
+  border: 1px solid #14b8a6;
+  background: #f0fdfa;
+  color: #134e4a;
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.meta-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+  font-size: 0.84rem;
+  color: #334155;
+  margin-top: 6px;
+}
+
+.mini-list {
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow: auto;
+  font-size: 0.84rem;
+  border: 1px dashed #d4e0ef;
+  border-radius: 8px;
+  padding: 8px;
+  background: #f8fbff;
+}
+
+@media (min-width: 900px) {
+  .control-panel {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(2, minmax(280px, 1fr));
+    align-items: start;
+  }
+
+  .control-panel > h1,
+  .control-panel > .muted {
+    grid-column: 1 / -1;
+  }
+
+  .mode-row {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  }
+
+  .meta-grid {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+}
+
+@media (max-width: 899px) {
+  .map-panel {
+    height: 55vh;
+    min-height: 330px;
+  }
+
+  .map-topbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .map-tabs {
+    max-width: 100%;
+    grid-template-columns: 1fr;
+  }
+
+  .map-menu-toggle {
+    align-self: flex-end;
+  }
+
+  .map-quick-menu {
+    top: 138px;
+  }
 }
