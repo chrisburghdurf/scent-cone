@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MCSAR Hazmat Console</title>
+  <title>SMFR Hazmat Console</title>
   <style>
     :root {
       --ink: #f8fafc;
@@ -339,60 +339,60 @@
       <div class="brand">
         <div class="brand-mark" aria-hidden="true"></div>
         <div>
-          <div class="brand-name">MCSAR</div>
-          <div class="brand-sub">Marion County Search & Rescue</div>
+          <div class="brand-name">SMFR</div>
+          <div class="brand-sub">Southern Manatee Fire Rescue</div>
         </div>
       </div>
 
       <nav class="nav">
-        <a class="nav-link active" href="#" data-scroll-target="hero">Home</a>
-        <a class="nav-link" href="#" data-scroll-target="consoleSection">Hazmat Console</a>
-        <a class="nav-link" href="#" data-scroll-target="consoleSection">Our Services</a>
-        <a class="nav-link" href="#" data-scroll-target="consoleSection">Get Involved</a>
-        <a class="nav-link" href="#" data-scroll-target="consoleSection">Contact</a>
+        <a class="nav-link active" href="#" data-scroll-target="hero">Overview</a>
+        <a class="nav-link" href="#" data-scroll-target="consoleSection">Incident Intake</a>
+        <a class="nav-link" href="#" data-scroll-target="consoleSection">Evidence Entry</a>
+        <a class="nav-link" href="#" data-scroll-target="consoleSection">Candidate Analysis</a>
+        <a class="nav-link" href="#" data-scroll-target="consoleSection">Alarm Control</a>
       </nav>
 
       <div class="actions">
-        <button class="btn btn-ghost" type="button" data-scroll-target="consoleSection">Search</button>
-        <button class="btn btn-primary" type="button" data-scroll-target="consoleSection">Donate</button>
+        <button class="btn btn-ghost" type="button" data-scroll-target="consoleSection">Open Console</button>
+        <button class="btn btn-primary" type="button" data-scroll-target="consoleSection">Start Assessment</button>
         <button id="mobileMenuBtn" class="menu-btn" type="button" aria-expanded="false" aria-controls="mobileMenu">☰</button>
       </div>
     </header>
 
     <nav id="mobileMenu" class="mobile-menu" aria-label="Mobile navigation">
-      <a class="nav-link" href="#" data-scroll-target="hero">Home</a>
-      <a class="nav-link" href="#" data-scroll-target="consoleSection">Hazmat Console</a>
-      <a class="nav-link" href="#" data-scroll-target="consoleSection">Our Services</a>
-      <a class="nav-link" href="#" data-scroll-target="consoleSection">Get Involved</a>
-      <a class="nav-link" href="#" data-scroll-target="consoleSection">Contact</a>
+      <a class="nav-link" href="#" data-scroll-target="hero">Overview</a>
+      <a class="nav-link" href="#" data-scroll-target="consoleSection">Incident Intake</a>
+      <a class="nav-link" href="#" data-scroll-target="consoleSection">Evidence Entry</a>
+      <a class="nav-link" href="#" data-scroll-target="consoleSection">Candidate Analysis</a>
+      <a class="nav-link" href="#" data-scroll-target="consoleSection">Alarm Control</a>
     </nav>
 
     <section id="hero" class="hero">
       <div class="hero-inner">
-        <h1>Marion County Search and Rescue</h1>
-        <p>Dedicated to finding the lost and saving lives.</p>
-        <button id="launchConsoleBtn" class="btn btn-primary" type="button">Launch Hazmat Console</button>
+        <h1>Southern Manatee Fire Rescue</h1>
+        <p>Hazmat inference support for faster, safer field decisions.</p>
+        <button id="launchConsoleBtn" class="btn btn-primary" type="button">Start Hazmat Assessment</button>
       </div>
     </section>
 
     <section class="feature-row">
       <article class="feature">
         <div class="feature-icon">◎</div>
-        <h3>Our Mission</h3>
-        <p>Fast field decision support with clear, auditable hazard reasoning for mixed-scene incidents.</p>
-        <button class="btn btn-primary" type="button" data-scroll-target="consoleSection">Open Tools</button>
+        <h3>Scene Intake</h3>
+        <p>Capture initial observations and set candidate mode for unknown or mixed-source incidents.</p>
+        <button class="btn btn-primary" type="button" data-scroll-target="consoleSection">Begin Intake</button>
       </article>
       <article class="feature">
         <div class="feature-icon">✈</div>
-        <h3>Our Services</h3>
-        <p>PID/FID, LEL, O2, and paper-test fusion with confidence ranking and elimination workflow.</p>
-        <button class="btn btn-primary" type="button" data-scroll-target="consoleSection">Run Assessment</button>
+        <h3>Evidence Fusion</h3>
+        <p>Fuse PID/FID, LEL, O2, and paper-test inputs into ranked chemical candidates.</p>
+        <button class="btn btn-primary" type="button" data-scroll-target="consoleSection">Run Fusion</button>
       </article>
       <article class="feature">
         <div class="feature-icon">🤝</div>
-        <h3>Get Involved</h3>
-        <p>Use candidate mode for unknowns, then confirm with known chemical lock and IDLH trigger handling.</p>
-        <button class="btn btn-primary" type="button" data-scroll-target="consoleSection">Start Console</button>
+        <h3>Alarm Decision</h3>
+        <p>Lock to a known chemical when confirmed and manage IDLH/O2/LEL alarm acknowledgment state.</p>
+        <button class="btn btn-primary" type="button" data-scroll-target="consoleSection">Review Alarm State</button>
       </article>
     </section>
 
@@ -490,8 +490,8 @@
 
   <div class="mobile-actions">
     <button class="btn btn-ghost" type="button" data-scroll-target="hero">Home</button>
-    <button class="btn btn-primary" type="button" data-scroll-target="consoleSection">Console</button>
-    <button class="btn btn-primary" type="button" data-scroll-target="consoleSection">Donate</button>
+    <button class="btn btn-primary" type="button" data-scroll-target="consoleSection">Intake</button>
+    <button class="btn btn-primary" type="button" data-scroll-target="consoleSection">Assess</button>
   </div>
 
   <script type="module" src="/src/main.ts"></script>
