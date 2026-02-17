@@ -9,6 +9,7 @@ function classifyPpm(value: number | null): InstrumentClass {
 }
 
 function classScore(observed: InstrumentClass, expected: InstrumentClass, weight: number) {
+  if (expected === "unknown") return { delta: 0, support: "", conflict: "" };
   if (observed === "none") return { delta: 0, support: "", conflict: "" };
   if (observed === expected) {
     return { delta: weight, support: `Observed ${observed.toUpperCase()} matches expected ${expected.toUpperCase()}.`, conflict: "" };
@@ -48,7 +49,7 @@ function hardExclusions(input: EvidenceInput, chemical: ChemicalRecord): string[
     reasons.push("FID high with PID near zero conflicts with oxygenated VOC signature.");
   }
 
-  if (!input.mixtureMode && (input.o2Pct ?? 20.9) <= 19.5 && !chemical.flags.canDisplaceOxygen) {
+  if (!input.mixtureMode && (input.o2Pct ?? 20.9) <= 19.5 && chemical.flags.canDisplaceOxygen === false) {
     reasons.push("O2 depletion conflicts with non-displacing gas profile.");
   }
 
@@ -75,7 +76,9 @@ export function updateCandidates(input: EvidenceInput, candidates: ChemicalRecor
     if (fid.conflict) conflictReasons.push(`FID conflicts: ${fid.conflict}`);
 
     if (input.ph !== "unknown") {
-      if (input.ph === chemical.expected.ph) {
+      if (chemical.expected.ph === "unknown") {
+        // No pH expectation available for this record.
+      } else if (input.ph === chemical.expected.ph) {
         score += 14;
         supportReasons.push(`pH supports expected ${chemical.expected.ph} tendency.`);
       } else {
@@ -88,7 +91,7 @@ export function updateCandidates(input: EvidenceInput, candidates: ChemicalRecor
       if (chemical.expected.oxidizerPositive || chemical.flags.oxidizer) {
         score += 14;
         supportReasons.push("Oxidizer paper positive matches oxidizer behavior.");
-      } else {
+      } else if (chemical.expected.oxidizerPositive === false || chemical.flags.oxidizer === false) {
         score -= 8;
         conflictReasons.push("Oxidizer paper positive conflicts with non-oxidizer profile.");
       }
@@ -99,7 +102,7 @@ export function updateCandidates(input: EvidenceInput, candidates: ChemicalRecor
         score += 12;
         supportReasons.push("LEL reading supports flammable profile.");
       }
-      if (input.lelPct >= 10 && !chemical.flags.flammable) {
+      if (input.lelPct >= 10 && chemical.flags.flammable === false) {
         score -= 12;
         conflictReasons.push("LEL reading conflicts with non-flammable profile.");
       }

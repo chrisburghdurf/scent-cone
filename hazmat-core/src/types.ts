@@ -1,4 +1,4 @@
-export type InstrumentClass = "none" | "low" | "medium" | "high";
+export type InstrumentClass = "none" | "low" | "medium" | "high" | "unknown";
 
 export type PhTendency = "acidic" | "neutral" | "basic" | "unknown";
 

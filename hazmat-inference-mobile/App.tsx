@@ -53,6 +53,7 @@ function NumericInput(props: {
 
 export default function App() {
   const [selectedChemicalId, setSelectedChemicalId] = useState<string>("");
+  const [chemicalQuery, setChemicalQuery] = useState("");
   const [reduceFlashing, setReduceFlashing] = useState(false);
   const [mixtureMode, setMixtureMode] = useState(false);
 
@@ -189,6 +190,11 @@ export default function App() {
 
   const topCandidates = scoredCandidates.filter((c) => !c.eliminated).slice(0, 6);
   const eliminated = scoredCandidates.filter((c) => c.eliminated);
+  const filteredChemicals = useMemo(() => {
+    const query = chemicalQuery.trim().toLowerCase();
+    if (!query) return CHEMICAL_LIBRARY.slice(0, 24);
+    return CHEMICAL_LIBRARY.filter((chemical) => chemical.name.toLowerCase().includes(query)).slice(0, 24);
+  }, [chemicalQuery]);
 
   function commitField(field: NumericField) {
     setInput((prev) => {
@@ -244,6 +250,17 @@ export default function App() {
             <Text style={styles.header}>Hazmat Inference Console</Text>
 
             <Text style={styles.label}>Chemical (optional, confirm when known)</Text>
+            <TextInput
+              value={chemicalQuery}
+              onChangeText={setChemicalQuery}
+              placeholder="Search chemical name..."
+              style={styles.searchInput}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <Text style={styles.helperText}>
+              Showing {filteredChemicals.length} of {CHEMICAL_LIBRARY.length} chemicals
+            </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chemScroll}>
               <Pressable
                 onPress={() => setSelectedChemicalId("")}
@@ -251,14 +268,14 @@ export default function App() {
               >
                 <Text style={[styles.chipText, selectedChemicalId === "" && styles.chipTextActive]}>Unknown</Text>
               </Pressable>
-              {CHEMICAL_LIBRARY.map((c) => (
+              {filteredChemicals.map((c) => (
                 <Pressable
                   key={c.id}
                   onPress={() => setSelectedChemicalId(c.id)}
                   style={[styles.chip, selectedChemicalId === c.id && styles.chipActive]}
                 >
                   <Text style={[styles.chipText, selectedChemicalId === c.id && styles.chipTextActive]}>
-                    {c.name} ({c.idlhPpm})
+                    {c.name} ({c.idlhPpm >= 1000000 ? "IDLH n/a" : c.idlhPpm})
                   </Text>
                 </Pressable>
               ))}
@@ -398,6 +415,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#334155",
     fontWeight: "700",
+  },
+  searchInput: {
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    fontSize: 14,
+    color: "#0f172a",
+  },
+  helperText: {
+    fontSize: 12,
+    color: "#64748b",
+    marginTop: -2,
   },
   chemScroll: {
     marginBottom: 4,
