@@ -386,6 +386,32 @@ function init() {
     render();
   });
 
+  const launchConsoleBtn = document.getElementById("launchConsoleBtn");
+  launchConsoleBtn?.addEventListener("click", () => {
+    const section = document.getElementById("consoleSection");
+    section?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
+  const mobileMenuBtn = document.getElementById("mobileMenuBtn") as HTMLButtonElement | null;
+  const mobileMenu = document.getElementById("mobileMenu");
+  mobileMenuBtn?.addEventListener("click", () => {
+    const open = mobileMenu?.classList.toggle("open") ?? false;
+    mobileMenuBtn.setAttribute("aria-expanded", String(open));
+  });
+
+  const scrollLinks = document.querySelectorAll<HTMLElement>("[data-scroll-target]");
+  scrollLinks.forEach((node) => {
+    node.addEventListener("click", (event) => {
+      event.preventDefault();
+      const targetId = node.dataset.scrollTarget;
+      if (!targetId) return;
+      const section = document.getElementById(targetId);
+      section?.scrollIntoView({ behavior: "smooth", block: "start" });
+      mobileMenu?.classList.remove("open");
+      mobileMenuBtn?.setAttribute("aria-expanded", "false");
+    });
+  });
+
   render();
 }
 
