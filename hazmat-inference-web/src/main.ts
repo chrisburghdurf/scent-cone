@@ -7,7 +7,7 @@ import {
   type CandidateScore,
   type EvidenceInput,
   type PhTendency,
-} from "hazmat-core";
+} from "./core";
 
 type NumericField = "pidPpm" | "fidPpm" | "o2Pct" | "lelPct" | "coPpm" | "h2sPpm";
 type Observation = "unknown" | "positive" | "negative";
