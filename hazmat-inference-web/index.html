@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hazmat Inference</title>
+  <style>
+    :root {
+      --bg: #f6f8fc;
+      --card: #ffffff;
+      --ink: #0f172a;
+      --muted: #334155;
+      --line: #dbe3ef;
+      --ok: #0f766e;
+      --warn: #b91c1c;
+      --warn2: #ef4444;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      background:
+        linear-gradient(rgba(8, 15, 25, 0.62), rgba(8, 15, 25, 0.72)),
+        radial-gradient(circle at 15% 15%, rgba(2,132,199,0.18), transparent 38%),
+        radial-gradient(circle at 90% 0%, rgba(11,122,92,0.18), transparent 36%),
+        url("/background.jpg") center center / cover no-repeat fixed,
+        var(--bg);
+      color: var(--ink);
+    }
+    .shell {
+      min-height: 100vh;
+      border: 10px solid transparent;
+      padding: 14px;
+      transition: border-color 120ms linear;
+    }
+    .alarm-flash { animation: alarmFlash 1s steps(2, start) infinite; }
+    .alarm-solid { border-color: var(--warn); }
+    @keyframes alarmFlash {
+      0% { border-color: #7f1d1d; }
+      50% { border-color: var(--warn2); }
+      100% { border-color: #7f1d1d; }
+    }
+    .banner {
+      background: linear-gradient(120deg, #7f1d1d, #dc2626);
+      color: #fff;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 12px;
+      display: none;
+    }
+    .banner h2 { margin: 0 0 6px; font-size: 1.05rem; }
+    .banner p { margin: 4px 0; font-size: 0.92rem; }
+    .ack {
+      margin-top: 8px;
+      border: none;
+      border-radius: 8px;
+      background: #fff1f2;
+      color: #991b1b;
+      font-weight: 700;
+      padding: 8px 10px;
+      cursor: pointer;
+    }
+    .grid { display: grid; gap: 12px; grid-template-columns: 1.1fr 1fr; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    h1, h3 { margin: 0 0 10px; }
+    label { display: grid; gap: 6px; margin-bottom: 10px; font-weight: 600; color: var(--muted); font-size: 0.92rem; }
+    input, select {
+      border: 1px solid #c7d2e4;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font: inherit;
+      color: var(--ink);
+      background: #fff;
+    }
+    .toggles { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 10px; }
+    .toggles label { display: flex; align-items: center; gap: 8px; margin: 0; }
+    .inputs { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(130px, 1fr)); }
+    .tabs { display: flex; gap: 8px; margin-bottom: 10px; }
+    .tab {
+      border: 1px solid #cbd5e1;
+      border-radius: 999px;
+      background: #fff;
+      color: #0f172a;
+      padding: 7px 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .tab.active { background: #0f766e; border-color: #0f766e; color: #fff; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .hint {
+      margin: 0 0 10px;
+      color: #475569;
+      font-size: 0.84rem;
+      line-height: 1.35;
+    }
+    .bars details {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px;
+      margin-bottom: 8px;
+    }
+    summary {
+      list-style: none;
+      display: flex;
+      justify-content: space-between;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .bar { height: 10px; border-radius: 999px; background: #e2e8f0; margin: 8px 0; overflow: hidden; }
+    .fill { height: 100%; background: linear-gradient(90deg, var(--ok), #0891b2); }
+    .why p, .elim p { margin: 5px 0; font-size: 0.88rem; }
+    .ok { color: var(--ok); }
+    .bad { color: var(--warn); }
+    .sop-note {
+      margin: 4px 0 8px;
+      font-size: 0.84rem;
+      color: #475569;
+      line-height: 1.35;
+    }
+    .sop-list {
+      margin: 0;
+      padding-left: 18px;
+      color: #0f172a;
+    }
+    .sop-list li {
+      margin: 6px 0;
+      font-size: 0.9rem;
+      line-height: 1.35;
+    }
+    @media (max-width: 920px) {
+      .grid { grid-template-columns: 1fr; }
+      .inputs { grid-template-columns: 1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .alarm-flash { animation: none; }
+    }
+  </style>
+</head>
+<body>
+  <main id="shell" class="shell">
+    <section id="banner" class="banner" aria-live="assertive">
+      <h2 id="bannerTitle">IDLH THRESHOLD EXCEEDED</h2>
+      <p id="bannerLine1"></p>
+      <p id="bannerLine2"></p>
+      <p id="bannerLine3"></p>
+      <button id="ackBtn" class="ack" type="button">Acknowledge</button>
+    </section>
+
+    <div class="grid">
+      <section class="card">
+        <h1>Hazmat Inference Console</h1>
+
+        <label>Chemical (optional, confirm when known)
+          <select id="chemicalSelect"></select>
+        </label>
+
+        <div class="toggles">
+          <label><input id="reduceFlashing" type="checkbox" /> Reduce flashing</label>
+          <label><input id="mixtureMode" type="checkbox" /> Mixture/contamination mode</label>
+        </div>
+
+        <div class="tabs">
+          <button id="tabDigital" class="tab active" type="button">Digital Readings</button>
+          <button id="tabPaper" class="tab" type="button">Paper Tests</button>
+        </div>
+
+        <section id="panelDigital" class="tab-panel active">
+          <div class="inputs" id="inputs"></div>
+        </section>
+
+        <section id="panelPaper" class="tab-panel">
+          <p class="hint">Paper tests are separated here for quick field workflow and entered as observations.</p>
+
+          <label>Universal pH Paper (1-14)
+            <select id="ph">
+              <option value="unknown">unknown</option>
+              <option value="acidic">acidic</option>
+              <option value="neutral">neutral</option>
+              <option value="basic">basic</option>
+            </select>
+          </label>
+
+          <label>Water-Finding Paper (Watesmo)
+            <select id="waterFinding">
+              <option value="unknown">unknown</option>
+              <option value="positive">positive (white to pink/lavender)</option>
+              <option value="negative">negative</option>
+            </select>
+          </label>
+
+          <label>Potassium Iodide (KI) Starch Paper
+            <select id="oxidizerPositive">
+              <option value="unknown">unknown</option>
+              <option value="positive">positive (oxidizer present)</option>
+              <option value="negative">negative</option>
+            </select>
+          </label>
+
+          <label>Fluoride Test Paper
+            <select id="fluorideTest">
+              <option value="unknown">unknown</option>
+              <option value="positive">positive</option>
+              <option value="negative">negative</option>
+            </select>
+          </label>
+
+          <label>M8 Paper
+            <select id="m8Test">
+              <option value="unknown">unknown</option>
+              <option value="positive">positive (nerve/blister indication)</option>
+              <option value="negative">negative</option>
+            </select>
+          </label>
+        </section>
+      </section>
+
+      <section class="card">
+        <h3>Match Confidence (based on entered data)</h3>
+        <div id="bars" class="bars"></div>
+        <h3 id="elimTitle">Eliminated (0)</h3>
+        <div id="elim" class="elim"></div>
+        <h3>HazMatIQ SOP Actions</h3>
+        <p class="sop-note">Derived from HazMatIQ 4-Step System and Above/Below the Line workflow.</p>
+        <ul id="sopActions" class="sop-list"></ul>
+      </section>
+    </div>
+  </main>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
